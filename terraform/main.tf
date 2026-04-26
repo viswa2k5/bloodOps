@@ -1,4 +1,9 @@
 terraform {
+  backend "s3" {
+    bucket = "bloodops-frontend-bucket"
+    key    = "terraform/state/terraform.tfstate"
+    region = "us-east-1"
+  }
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -342,6 +347,10 @@ resource "aws_lambda_function" "admin_function" {
   }
 }
 
+resource "aws_cloudwatch_log_group" "admin_logs" {
+  name              = "/aws/lambda/bloodops-admin-function"
+  retention_in_days = 7
+}
 
 # ============================================================
 # API GATEWAY
