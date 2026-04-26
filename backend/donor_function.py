@@ -2,18 +2,28 @@ import json
 import boto3
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('Donors')
 
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
+
 def lambda_handler(event, context):
-    method = event['httpMethod']
-    if method == 'POST':
-        return register_donor(event)
-    elif method == 'GET':
-        return get_donors(event)
-    else:
-        return response(405, {'message': 'Method not allowed'})
+    try:
+        method = event['httpMethod']
+        if method == 'POST':
+            return register_donor(event)
+        elif method == 'GET':
+            return get_donors(event)
+        else:
+            return response(405, {'message': 'Method not allowed'})
+    except Exception as e:
+        return response(500, {'message': str(e)})
 
 def register_donor(event):
     body = json.loads(event['body'])
@@ -24,7 +34,7 @@ def register_donor(event):
         'BloodType': body['blood_type'],
         'Location': body['location'],
         'Phone': body['phone'],
-        'Availability': body.get('availability', 'available'),
+        'Availability': body.get('availability', 'Available'),
         'LastDonationDate': body.get('last_donation_date', ''),
         'CreatedAt': datetime.now().isoformat()
     }
@@ -50,5 +60,5 @@ def response(status_code, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
         },
-        'body': json.dumps(body)
+        'body': json.dumps(body, cls=DecimalEncoder)
     }
