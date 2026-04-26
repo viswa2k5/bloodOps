@@ -1,1 +1,646 @@
-<!-- admin page -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BloodOps Admin</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,500&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #0c0000;
+      --panel: rgba(32, 6, 8, 0.8);
+      --panel-solid: #2a0709;
+      --card: rgba(255, 255, 255, 0.045);
+      --text: #fff4f4;
+      --muted: #f5c8cd;
+      --primary: #ff475f;
+      --primary-soft: rgba(255, 71, 95, 0.22);
+      --ok: #6ff0bf;
+      --error: #ff9f9f;
+      --ring: rgba(255, 225, 225, 0.16);
+      --shadow: 0 20px 42px rgba(17, 0, 0, 0.45);
+      --radius: 16px;
+      --nav-h: 60px;
+    }
+
+    [data-theme="light"] {
+      --bg: #f9f0f0;
+      --panel: rgba(245, 220, 220, 0.98);
+      --panel-solid: #f0cccc;
+      --card: rgba(180, 60, 60, 0.12);
+      --text: #1a0005;
+      --muted: #5a0018;
+      --primary: #c01030;
+      --primary-soft: rgba(192, 16, 48, 0.18);
+      --ok: #0f5c38;
+      --error: #a02020;
+      --ring: rgba(140, 10, 40, 0.32);
+      --shadow: 0 20px 42px rgba(140, 10, 40, 0.2);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: Manrope, Segoe UI, Arial, sans-serif;
+      color: var(--text);
+      background:
+        linear-gradient(145deg, rgba(0,0,0,0.88) 10%, transparent 10%, transparent 35%, rgba(0,0,0,0.9) 35%, rgba(0,0,0,0.9) 56%, transparent 56%, transparent 78%, rgba(0,0,0,0.9) 78%),
+        repeating-linear-gradient(to right, rgba(255,25,40,0.03) 0px, rgba(255,25,40,0.7) 2px, rgba(255,25,40,0.16) 4px, rgba(0,0,0,0.35) 10px, rgba(255,30,47,0.04) 16px),
+        radial-gradient(circle at 82% 46%, rgba(255,0,38,0.45) 0%, rgba(255,0,38,0.04) 34%, transparent 58%),
+        radial-gradient(circle at 27% 22%, rgba(255,0,38,0.3) 0%, transparent 43%),
+        linear-gradient(160deg, #1a0002 0%, #0c0000 55%, #080000 100%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    [data-theme="light"] body {
+      background: linear-gradient(160deg, #f5e0e0 0%, #f9f0f0 55%, #fdf8f8 100%);
+    }
+
+    /* NAVBAR */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0;
+      height: var(--nav-h); z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(12,0,0,0.82);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--ring);
+    }
+    [data-theme="light"] .navbar { background: rgba(230,180,180,0.96); border-color: rgba(140,10,40,0.3); }
+
+    .nav-logo {
+      width: 42px; height: 42px; vertical-align: middle;
+      mix-blend-mode: screen;
+      filter: drop-shadow(0 0 6px rgba(255,60,70,0.7));
+      margin-right: 8px;
+      animation: spinY 3s linear infinite;
+    }
+    [data-theme="light"] .nav-logo { mix-blend-mode: normal; }
+
+    .nav-brand {
+      font-family: Fraunces, serif; font-size: 1.25rem; font-weight: 700;
+      color: var(--text); text-decoration: none; display: flex; align-items: center;
+    }
+
+    .admin-badge {
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      color: white; font-size: 0.68rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 999px; margin-left: 8px;
+      letter-spacing: 0.05em; text-transform: uppercase;
+    }
+
+    .nav-right { display: flex; align-items: center; gap: 8px; }
+
+    .theme-toggle {
+      background: var(--card); border: 1px solid var(--ring); border-radius: 999px;
+      width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 1rem; color: var(--text); transition: background 0.2s;
+    }
+    .theme-toggle:hover { background: var(--primary-soft); }
+
+    .refresh-btn {
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      border: none; border-radius: 999px;
+      padding: 7px 16px; font: inherit; font-size: 0.82rem; font-weight: 700;
+      color: white; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 14px rgba(180,30,50,0.4);
+    }
+    .refresh-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(180,30,50,0.55); }
+    .refresh-btn.spinning { animation: spin 0.7s linear; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* CONTAINER */
+    .container {
+      width: min(1200px, 94vw); margin: 0 auto;
+      padding: calc(var(--nav-h) + 28px) 0 80px;
+      position: relative; z-index: 1;
+    }
+
+    /* HERO HEADER */
+    .admin-hero {
+      text-align: center; padding: 36px 20px 28px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.11), rgba(255,255,255,0.03));
+      border: 1px solid var(--ring); border-radius: 24px;
+      box-shadow: var(--shadow); backdrop-filter: blur(12px);
+      animation: riseIn 0.7s ease; margin-bottom: 24px;
+    }
+    [data-theme="light"] .admin-hero {
+      background: linear-gradient(145deg, rgba(240,200,200,0.85), rgba(230,180,180,0.65));
+      border-color: rgba(140,10,40,0.3);
+    }
+
+    .admin-hero-inner { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+    .admin-logo {
+      width: 64px; height: 64px;
+      mix-blend-mode: screen; filter: drop-shadow(0 0 10px rgba(255,60,70,0.5));
+      animation: spinY 3s linear infinite;
+    }
+    [data-theme="light"] .admin-logo { mix-blend-mode: normal; }
+
+    .admin-hero h1 {
+      font-family: Fraunces, serif; font-size: clamp(1.6rem, 3vw, 2.4rem);
+      font-weight: 700; letter-spacing: -0.02em;
+      background: linear-gradient(180deg, #fffef7 0%, #f7f0e4 38%, #ead9c4 72%, #dcc5a8 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      animation: titleGlow 2.8s ease-in-out infinite;
+    }
+    [data-theme="light"] .admin-hero h1 {
+      background: linear-gradient(160deg, #6b0000 0%, #a01020 35%, #c8192e 60%, #800010 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+
+    .admin-hero p { color: var(--muted); font-size: 0.92rem; margin-top: 6px; }
+    .last-updated { font-size: 0.8rem; color: var(--muted); margin-top: 8px; opacity: 0.7; }
+
+    /* SECTION */
+    .section {
+      margin-top: 24px; background: var(--panel); border: 1px solid var(--ring);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px;
+      backdrop-filter: blur(6px); animation: fadeIn 0.8s ease;
+    }
+    .section h2 { margin: 0 0 16px; font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+
+    /* SKELETON */
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 75%);
+      background-size: 200% 100%; animation: shimmer 1.4s infinite;
+      border-radius: 6px; height: 1.55rem; width: 60%; margin-top: 6px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* STATS GRID */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .stat-card {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 16px; transition: transform .25s ease, border-color .25s ease;
+    }
+    [data-theme="light"] .stat-card { background: rgba(180,60,60,0.14); border-color: rgba(140,10,40,0.2); }
+    .stat-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.2); }
+    .stat-card .label { color: var(--muted); font-size: .85rem; font-weight: 600; }
+    .stat-card .value { margin-top: 8px; font-size: 1.8rem; font-weight: 700; }
+    .stat-card .sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    /* BLOOD TYPE BARS */
+    .blood-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .blood-bar-card {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 12px;
+    }
+    [data-theme="light"] .blood-bar-card { background: rgba(180,60,60,0.12); border-color: rgba(140,10,40,0.2); }
+    .blood-bar-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 700; font-size: 0.95rem; }
+    .blood-bar-track { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+    .blood-bar-fill { height: 100%; border-radius: 999px; transition: width 0.9s ease; }
+    .blood-bar-fill.low { background: linear-gradient(90deg, #ff9f9f, #ffcfcf); }
+    .blood-bar-fill.med { background: linear-gradient(90deg, #ff6b35, #ffaa80); }
+    .blood-bar-fill.high { background: linear-gradient(90deg, var(--ok), #a8f0d8); }
+    .blood-bar-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    /* TABLE */
+    .table-wrap {
+      width: 100%; overflow-x: auto;
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+      background: rgba(14,21,37,0.65);
+    }
+    [data-theme="light"] .table-wrap { background: rgba(220,160,160,0.35); border-color: rgba(140,10,40,0.25); }
+    table { width: 100%; min-width: 600px; border-collapse: collapse; }
+    th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: .88rem; }
+    th { color: #ffd2d2; font-weight: 700; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.03); }
+    [data-theme="light"] th { color: #1a0005; font-weight: 800; background: rgba(180,60,60,0.12); }
+    [data-theme="light"] td { color: #1a0005; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.03); }
+    [data-theme="light"] tr:hover td { background: rgba(180,60,60,0.08); }
+    a { color: #ffd9df; text-decoration: none; }
+    a:hover { color: #ffffff; text-decoration: underline; }
+    [data-theme="light"] a { color: #8b0000; }
+    [data-theme="light"] a:hover { color: #1a0005; }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 0.75rem; font-weight: 700;
+    }
+    .badge-urgent { background: rgba(255,71,95,0.2); color: #ff8fa3; border: 1px solid rgba(255,71,95,0.3); }
+    .badge-normal { background: rgba(111,240,191,0.15); color: #6ff0bf; border: 1px solid rgba(111,240,191,0.25); }
+    .badge-pending { background: rgba(255,170,80,0.2); color: #ffaa50; border: 1px solid rgba(255,170,80,0.3); }
+    .badge-matched { background: rgba(111,240,191,0.15); color: #6ff0bf; border: 1px solid rgba(111,240,191,0.25); }
+    .badge-available { background: rgba(111,240,191,0.15); color: #6ff0bf; border: 1px solid rgba(111,240,191,0.25); }
+    .badge-unavailable { background: rgba(255,159,159,0.2); color: #ff9f9f; border: 1px solid rgba(255,159,159,0.3); }
+    [data-theme="light"] .badge-urgent { background: rgba(180,0,30,0.1); color: #8b0000; border-color: rgba(180,0,30,0.2); }
+    [data-theme="light"] .badge-normal { background: rgba(15,92,56,0.1); color: #0f5c38; border-color: rgba(15,92,56,0.2); }
+    [data-theme="light"] .badge-pending { background: rgba(180,100,0,0.1); color: #7a4000; border-color: rgba(180,100,0,0.2); }
+    [data-theme="light"] .badge-matched { background: rgba(15,92,56,0.1); color: #0f5c38; border-color: rgba(15,92,56,0.2); }
+    [data-theme="light"] .badge-available { background: rgba(15,92,56,0.1); color: #0f5c38; border-color: rgba(15,92,56,0.2); }
+    [data-theme="light"] .badge-unavailable { background: rgba(180,0,30,0.1); color: #8b0000; border-color: rgba(180,0,30,0.2); }
+
+    .empty-row td { text-align: center; color: var(--muted); padding: 24px; font-style: italic; }
+
+    .message { min-height: 20px; font-size: .88rem; margin-bottom: 10px; }
+    .message.success { color: var(--ok); }
+    .message.error { color: var(--error); }
+    .message.info { color: var(--muted); }
+
+    /* BACK TO TOP */
+    .back-to-top {
+      position: fixed; bottom: 24px; right: 24px; z-index: 99;
+      width: 42px; height: 42px; border-radius: 999px;
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      border: none; color: white; font-size: 1.1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 20px rgba(180,30,50,0.45);
+      opacity: 0; transform: translateY(12px); transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+    }
+    .back-to-top.visible { opacity: 1; transform: translateY(0); pointer-events: all; }
+    .back-to-top:hover { transform: translateY(-2px); }
+
+    /* ANIMATIONS */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes riseIn { from { opacity: 0; transform: translateY(18px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes spinY { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
+    @keyframes titleGlow {
+      0%, 100% { filter: drop-shadow(0 0 10px rgba(255,248,235,0.4)) drop-shadow(0 0 20px rgba(234,217,196,0.34)); }
+      50% { filter: drop-shadow(0 0 14px rgba(255,252,242,0.55)) drop-shadow(0 0 28px rgba(241,226,204,0.42)); }
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 980px) {
+      .stats-grid, .blood-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .container { width: 96vw; }
+      .stats-grid, .blood-grid { grid-template-columns: 1fr; }
+      table { min-width: 500px; }
+      .admin-hero-inner { flex-direction: column; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <a href="#" class="nav-brand">
+      <img src="./logo.png" alt="" class="nav-logo"/>
+      BloodOps
+      <span class="admin-badge">Admin</span>
+    </a>
+    <div class="nav-right">
+      <button class="refresh-btn" id="refreshBtn" onclick="refreshAll()">↻ Refresh</button>
+      <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <!-- ADMIN HERO -->
+    <div class="admin-hero">
+      <div class="admin-hero-inner">
+        <img src="./logo.png" class="admin-logo" alt="BloodOps" />
+        <div>
+          <h1>Admin Dashboard</h1>
+          <p>Live data from AWS DynamoDB — only you can see this</p>
+          <div class="last-updated" id="lastUpdated">Last updated: —</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATS ROW -->
+    <section class="section">
+      <h2>📊 Overview</h2>
+      <div id="statsMessage" class="message info">Loading dashboard...</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="label">Total Donors</div>
+          <div id="totalDonors" class="value"><div class="skeleton"></div></div>
+          <div class="sub">Registered in system</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Requests</div>
+          <div id="totalRequests" class="value"><div class="skeleton"></div></div>
+          <div class="sub">From hospitals</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Donations</div>
+          <div id="totalDonations" class="value"><div class="skeleton"></div></div>
+          <div class="sub">Completed donations</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Pending Requests</div>
+          <div id="pendingRequests" class="value"><div class="skeleton"></div></div>
+          <div class="sub">Awaiting match</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BLOOD TYPE AVAILABILITY -->
+    <section class="section">
+      <h2>🩸 Blood Type Availability</h2>
+      <div class="blood-grid" id="bloodGrid">
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>A+</span><span id="bAPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barAPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>A-</span><span id="bANeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barANeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>B+</span><span id="bBPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barBPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>B-</span><span id="bBNeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barBNeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>O+</span><span id="bOPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barOPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>O-</span><span id="bONeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barONeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>AB+</span><span id="bABPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barABPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>AB-</span><span id="bABNeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barABNeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+      </div>
+    </section>
+
+    <!-- PENDING REQUESTS TABLE -->
+    <section class="section">
+      <h2>🏥 Pending Requests</h2>
+      <div id="requestsMessage" class="message info">Loading...</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Request ID</th>
+              <th>Hospital Name</th>
+              <th>Blood Type</th>
+              <th>Quantity</th>
+              <th>Urgency</th>
+              <th>Timestamp</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="requestsTableBody">
+            <tr class="empty-row"><td colspan="7">Loading requests...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ALL DONORS TABLE -->
+    <section class="section">
+      <h2>👤 All Donors</h2>
+      <div id="donorsMessage" class="message info">Loading...</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Donor ID</th>
+              <th>Name</th>
+              <th>Blood Type</th>
+              <th>Location</th>
+              <th>Phone</th>
+              <th>Availability</th>
+              <th>Last Donation</th>
+            </tr>
+          </thead>
+          <tbody id="donorsTableBody">
+            <tr class="empty-row"><td colspan="7">Loading donors...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DONATION HISTORY TABLE -->
+    <section class="section">
+      <h2>💉 Recent Donations</h2>
+      <div id="historyMessage" class="message info">Loading...</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>History ID</th>
+              <th>Donor ID</th>
+              <th>Hospital</th>
+              <th>Donation Date</th>
+              <th>Certificate</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr class="empty-row"><td colspan="5">Loading history...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- BACK TO TOP -->
+  <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+  <script>
+    const API_URL = 'YOUR_API_GATEWAY_URL';
+    const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+
+    const bloodTypeEls = {
+      'A+': document.getElementById('bAPlus'), 'A-': document.getElementById('bANeg'),
+      'B+': document.getElementById('bBPlus'), 'B-': document.getElementById('bBNeg'),
+      'O+': document.getElementById('bOPlus'), 'O-': document.getElementById('bONeg'),
+      'AB+': document.getElementById('bABPlus'), 'AB-': document.getElementById('bABNeg')
+    };
+    const barEls = {
+      'A+': document.getElementById('barAPlus'), 'A-': document.getElementById('barANeg'),
+      'B+': document.getElementById('barBPlus'), 'B-': document.getElementById('barBNeg'),
+      'O+': document.getElementById('barOPlus'), 'O-': document.getElementById('barONeg'),
+      'AB+': document.getElementById('barABPlus'), 'AB-': document.getElementById('barABNeg')
+    };
+
+    // THEME
+    const themeToggle = document.getElementById('themeToggle');
+    const savedTheme = localStorage.getItem('bloodops-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    themeToggle.textContent = savedTheme === 'dark' ? '🌙' : '☀️';
+    themeToggle.addEventListener('click', () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      themeToggle.textContent = next === 'dark' ? '🌙' : '☀️';
+      localStorage.setItem('bloodops-theme', next);
+    });
+
+    // BACK TO TOP
+    const backToTop = document.getElementById('backToTop');
+    window.addEventListener('scroll', () => backToTop.classList.toggle('visible', window.scrollY > 300));
+
+    // HELPERS
+    function setMessage(el, text, type) { el.textContent = text || ''; el.className = `message ${type || ''}`.trim(); }
+
+    function animateCount(el, target) {
+      let start = 0; const dur = 800;
+      el.innerHTML = '';
+      const step = (ts) => {
+        if (!start) start = ts;
+        const p = Math.min((ts - start) / dur, 1);
+        el.textContent = Math.floor(p * target);
+        if (p < 1) requestAnimationFrame(step); else el.textContent = target;
+      };
+      requestAnimationFrame(step);
+    }
+
+    function badgeUrgency(u) {
+      const v = (u || '').toLowerCase();
+      return `<span class="badge badge-${v}">${u || '-'}</span>`;
+    }
+    function badgeStatus(s) {
+      const v = (s || '').toLowerCase();
+      return `<span class="badge badge-${v}">${s || '-'}</span>`;
+    }
+    function badgeAvailability(a) {
+      const v = (a || '').toLowerCase();
+      return `<span class="badge badge-${v}">${a || '-'}</span>`;
+    }
+
+    function shortId(id) {
+      if (!id) return '-';
+      return `<span title="${id}">${id.substring(0,8)}...</span>`;
+    }
+
+    function formatDate(d) {
+      if (!d) return '-';
+      try { return new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }); } catch { return d; }
+    }
+
+    // FETCH ADMIN STATS
+    async function fetchAdminStats() {
+      const msg = document.getElementById('statsMessage');
+      setMessage(msg, 'Fetching live stats...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/admin`);
+        if (!res.ok) throw new Error('Failed to fetch admin stats.');
+        const data = await res.json();
+
+        const totalDonors = data.total_donors ?? data.totalDonors ?? 0;
+        const totalRequests = data.total_requests ?? data.totalRequests ?? 0;
+        const totalDonations = data.total_donations ?? data.totalDonations ?? 0;
+        const pendingReqs = data.pending_requests ?? data.pendingRequests ?? [];
+        const bloodTypeCounts = data.blood_type_availability ?? data.blood_type_counts ?? data.bloodTypeCounts ?? {};
+
+        animateCount(document.getElementById('totalDonors'), totalDonors);
+        animateCount(document.getElementById('totalRequests'), totalRequests);
+        animateCount(document.getElementById('totalDonations'), totalDonations);
+        animateCount(document.getElementById('pendingRequests'), Array.isArray(pendingReqs) ? pendingReqs.length : pendingReqs);
+
+        const maxVal = Math.max(...bloodTypes.map(t => Number(bloodTypeCounts[t] || 0)), 1);
+        bloodTypes.forEach(type => {
+          const count = Number(bloodTypeCounts[type] || 0);
+          bloodTypeEls[type].textContent = count;
+          const pct = Math.round((count / maxVal) * 100);
+          const bar = barEls[type];
+          bar.style.width = pct + '%';
+          bar.className = 'blood-bar-fill ' + (pct < 25 ? 'low' : pct < 60 ? 'med' : 'high');
+        });
+
+        document.getElementById('lastUpdated').textContent = `Last updated: ${new Date().toLocaleTimeString('en-IN')}`;
+        setMessage(msg, `Dashboard loaded successfully.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading stats.', 'error');
+      }
+    }
+
+    // FETCH PENDING REQUESTS
+    async function fetchRequests() {
+      const msg = document.getElementById('requestsMessage');
+      const tbody = document.getElementById('requestsTableBody');
+      setMessage(msg, 'Loading requests...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/requests?status=pending`);
+        if (!res.ok) throw new Error('Failed to fetch requests.');
+        const data = await res.json();
+        const requests = Array.isArray(data) ? data : (data.Items || data.requests || []);
+        if (requests.length === 0) {
+          tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No pending requests found</td></tr>';
+          setMessage(msg, 'No pending requests.', 'info');
+          return;
+        }
+        tbody.innerHTML = requests.map(r => `
+          <tr>
+            <td>${shortId(r.RequestID ?? r.request_id)}</td>
+            <td>${r.HospitalName ?? r.hospital_name ?? '-'}</td>
+            <td><strong>${r.BloodType ?? r.blood_type ?? '-'}</strong></td>
+            <td>${r.Quantity ?? r.quantity ?? '-'} units</td>
+            <td>${badgeUrgency(r.Urgency ?? r.urgency)}</td>
+            <td>${formatDate(r.Timestamp ?? r.timestamp ?? r.CreatedAt)}</td>
+            <td>${badgeStatus(r.Status ?? r.status ?? 'pending')}</td>
+          </tr>`).join('');
+        setMessage(msg, `${requests.length} pending request(s) found.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading requests.', 'error');
+        document.getElementById('requestsTableBody').innerHTML = '<tr class="empty-row"><td colspan="7">Failed to load requests</td></tr>';
+      }
+    }
+
+    // FETCH ALL DONORS
+    async function fetchDonors() {
+      const msg = document.getElementById('donorsMessage');
+      const tbody = document.getElementById('donorsTableBody');
+      setMessage(msg, 'Loading donors...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/donors`);
+        if (!res.ok) throw new Error('Failed to fetch donors.');
+        const data = await res.json();
+        const donors = Array.isArray(data) ? data : (data.Items || data.donors || []);
+        if (donors.length === 0) {
+          tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No donors registered yet</td></tr>';
+          setMessage(msg, 'No donors found.', 'info');
+          return;
+        }
+        tbody.innerHTML = donors.map(d => `
+          <tr>
+            <td>${shortId(d.DonorID ?? d.donor_id)}</td>
+            <td>${d.Name ?? d.name ?? '-'}</td>
+            <td><strong>${d.BloodType ?? d.blood_type ?? '-'}</strong></td>
+            <td>${d.Location ?? d.location ?? '-'}</td>
+            <td>${d.Phone ?? d.phone ?? '-'}</td>
+            <td>${badgeAvailability(d.Availability ?? d.availability)}</td>
+            <td>${formatDate(d.LastDonationDate ?? d.last_donation_date)}</td>
+          </tr>`).join('');
+        setMessage(msg, `${donors.length} donor(s) registered.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading donors.', 'error');
+        document.getElementById('donorsTableBody').innerHTML = '<tr class="empty-row"><td colspan="7">Failed to load donors</td></tr>';
+      }
+    }
+
+    // FETCH DONATION HISTORY
+    async function fetchHistory() {
+      const msg = document.getElementById('historyMessage');
+      const tbody = document.getElementById('historyTableBody');
+      setMessage(msg, 'Loading donation history...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/history`);
+        if (!res.ok) throw new Error('Failed to fetch history.');
+        const data = await res.json();
+        const history = Array.isArray(data) ? data : (data.Items || data.history || []);
+        if (history.length === 0) {
+          tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No donations recorded yet</td></tr>';
+          setMessage(msg, 'No donation history found.', 'info');
+          return;
+        }
+        tbody.innerHTML = history.map(h => {
+          const certUrl = h.CertificateURL ?? h.certificate_url ?? h.certificateUrl ?? '';
+          const certCell = certUrl ? `<a href="${certUrl}" target="_blank" rel="noopener">Download PDF</a>` : '<span style="opacity:0.5">Not generated</span>';
+          return `<tr>
+            <td>${shortId(h.HistoryID ?? h.history_id)}</td>
+            <td>${shortId(h.DonorID ?? h.donor_id)}</td>
+            <td>${h.HospitalName ?? h.hospital_name ?? '-'}</td>
+            <td>${formatDate(h.DonationDate ?? h.donation_date)}</td>
+            <td>${certCell}</td>
+          </tr>`;
+        }).join('');
+        setMessage(msg, `${history.length} donation record(s) found.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading history.', 'error');
+        document.getElementById('historyTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">Failed to load history</td></tr>';
+      }
+    }
+
+    // REFRESH ALL
+    async function refreshAll() {
+      const btn = document.getElementById('refreshBtn');
+      btn.classList.add('spinning');
+      btn.disabled = true;
+      await Promise.all([fetchAdminStats(), fetchRequests(), fetchDonors(), fetchHistory()]);
+      btn.classList.remove('spinning');
+      btn.disabled = false;
+    }
+
+    // INIT
+    refreshAll();
+    setInterval(refreshAll, 30000);
+  </script>
+</body>
+</html>
