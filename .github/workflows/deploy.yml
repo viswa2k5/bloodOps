@@ -32,30 +32,50 @@ jobs:
           curl -fsSL https://get.opentofu.org/install-opentofu.sh | sudo bash -s -- --install-method standalone
           tofu version
 
-      - name: Cleanup existing AWS resources
+      - name: Cleanup ALL existing AWS resources
         run: |
           echo "Deleting Lambda functions..."
-          aws lambda delete-function --function-name bloodops-donor-function 2>/dev/null || true
-          aws lambda delete-function --function-name bloodops-request-function 2>/dev/null || true
-          aws lambda delete-function --function-name bloodops-match-function 2>/dev/null || true
-          aws lambda delete-function --function-name bloodops-history-function 2>/dev/null || true
-          aws lambda delete-function --function-name bloodops-certificate-function 2>/dev/null || true
-          aws lambda delete-function --function-name bloodops-reminder-function 2>/dev/null || true
-          aws lambda delete-function --function-name bloodops-admin-function 2>/dev/null || true
+          for fn in bloodops-donor-function bloodops-request-function bloodops-match-function bloodops-history-function bloodops-certificate-function bloodops-reminder-function bloodops-admin-function; do
+            aws lambda delete-function --function-name $fn 2>/dev/null && echo "Deleted $fn" || echo "Skipped $fn"
+          done
+
+          echo "Deleting Lambda layers..."
+          for v in 1 2 3 4 5; do
+            aws lambda delete-layer-version --layer-name reportlab-layer --version-number $v 2>/dev/null || true
+          done
+
           echo "Deleting IAM roles..."
           aws iam delete-role-policy --role-name bloodops-lambda-role --policy-name bloodops-lambda-policy 2>/dev/null || true
           aws iam delete-role --role-name bloodops-lambda-role 2>/dev/null || true
           aws iam delete-role-policy --role-name bloodops-eventbridge-role --policy-name bloodops-eventbridge-policy 2>/dev/null || true
           aws iam delete-role --role-name bloodops-eventbridge-role 2>/dev/null || true
+
           echo "Deleting CloudWatch log groups..."
-          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-donor-function 2>/dev/null || true
-          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-request-function 2>/dev/null || true
-          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-match-function 2>/dev/null || true
-          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-history-function 2>/dev/null || true
-          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-certificate-function 2>/dev/null || true
-          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-reminder-function 2>/dev/null || true
-          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-admin-function 2>/dev/null || true
-          echo "Cleanup complete!"
+          for fn in bloodops-donor-function bloodops-request-function bloodops-match-function bloodops-history-function bloodops-certificate-function bloodops-reminder-function bloodops-admin-function; do
+            aws logs delete-log-group --log-group-name /aws/lambda/$fn 2>/dev/null && echo "Deleted log group $fn" || echo "Skipped log group $fn"
+          done
+
+          echo "Deleting EventBridge schedule..."
+          aws scheduler delete-schedule --name bloodops-daily-reminder 2>/dev/null || true
+
+          echo "Deleting CloudWatch alarms..."
+          aws cloudwatch delete-alarms --alarm-names bloodops-donor-function-errors bloodops-request-function-errors bloodops-match-function-errors 2>/dev/null || true
+
+          echo "Deleting SNS topics..."
+          for topic in urgent-blood-alerts reminder-alerts admin-notifications; do
+            ARN=$(aws sns list-topics --query "Topics[?contains(TopicArn, '$topic')].TopicArn" --output text 2>/dev/null)
+            if [ -n "$ARN" ]; then
+              aws sns delete-topic --topic-arn $ARN 2>/dev/null && echo "Deleted SNS $topic" || true
+            fi
+          done
+
+          echo "Deleting API Gateway..."
+          API_ID=$(aws apigateway get-rest-apis --query "items[?name=='bloodops-api'].id" --output text 2>/dev/null)
+          if [ -n "$API_ID" ]; then
+            aws apigateway delete-rest-api --rest-api-id $API_ID 2>/dev/null && echo "Deleted API Gateway" || true
+          fi
+
+          echo "All cleanup done!"
 
       - name: Build reportlab Lambda Layer
         run: |
