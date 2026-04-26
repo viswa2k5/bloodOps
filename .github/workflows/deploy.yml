@@ -10,9 +10,6 @@ jobs:
     name: Deploy BloodOps to AWS
     runs-on: ubuntu-latest
 
-    env:
-      TF_VERSION: "1.11.4"
-
     steps:
 
       - name: Checkout code
@@ -30,11 +27,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Install Terraform manually
+      - name: Update HashiCorp GPG key and install Terraform
         run: |
-          wget -q https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
-          unzip terraform_${TF_VERSION}_linux_amd64.zip
-          sudo mv terraform /usr/local/bin/
+          sudo apt-get remove -y terraform || true
+          sudo rm -f /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/hashicorp-archive-keyring.gpg --list-keys
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt-get update
+          sudo apt-get install -y terraform
           terraform version
 
       - name: Build reportlab Lambda Layer
@@ -50,20 +51,14 @@ jobs:
 
       - name: Terraform Init
         working-directory: terraform
-        env:
-          TF_SKIP_PROVIDER_VERIFY: "1"
-        run: terraform init -upgrade
+        run: terraform init
 
       - name: Terraform Plan
         working-directory: terraform
-        env:
-          TF_SKIP_PROVIDER_VERIFY: "1"
         run: terraform plan
 
       - name: Terraform Apply
         working-directory: terraform
-        env:
-          TF_SKIP_PROVIDER_VERIFY: "1"
         run: terraform apply -auto-approve
 
       - name: Deploy frontend to S3
