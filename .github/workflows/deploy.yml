@@ -27,16 +27,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Update HashiCorp GPG key and install Terraform
+      - name: Install OpenTofu
         run: |
-          sudo apt-get remove -y terraform || true
-          sudo rm -f /usr/share/keyrings/hashicorp-archive-keyring.gpg
-          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/hashicorp-archive-keyring.gpg --list-keys
-          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
-          sudo apt-get update
-          sudo apt-get install -y terraform
-          terraform version
+          curl -fsSL https://get.opentofu.org/install-opentofu.sh | sudo bash -s -- --install-method standalone
+          tofu version
 
       - name: Build reportlab Lambda Layer
         run: |
@@ -49,17 +43,17 @@ jobs:
       - name: Create zips directory
         run: mkdir -p terraform/zips
 
-      - name: Terraform Init
+      - name: Tofu Init
         working-directory: terraform
-        run: terraform init
+        run: tofu init
 
-      - name: Terraform Plan
+      - name: Tofu Plan
         working-directory: terraform
-        run: terraform plan
+        run: tofu plan
 
-      - name: Terraform Apply
+      - name: Tofu Apply
         working-directory: terraform
-        run: terraform apply -auto-approve
+        run: tofu apply -auto-approve
 
       - name: Deploy frontend to S3
         run: |
