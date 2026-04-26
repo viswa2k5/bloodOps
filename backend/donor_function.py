@@ -31,6 +31,7 @@ def register_donor(event):
     item = {
         'DonorID': donor_id,
         'Name': body['name'],
+        'Email': body.get('email', ''),
         'BloodType': body['blood_type'],
         'Location': body['location'],
         'Phone': body['phone'],

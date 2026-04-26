@@ -59,6 +59,7 @@
       background: linear-gradient(160deg, #fff0f0 0%, #fff5f5 55%, #fffafa 100%);
     }
 
+    /* NAVBAR */
     .navbar {
       position: fixed; top: 0; left: 0; right: 0;
       height: var(--nav-h); z-index: 100;
@@ -78,8 +79,13 @@
       animation: spinY 3s linear infinite;
     }
 
-    .nav-brand { font-family: Fraunces, serif; font-size: 1.25rem; font-weight: 700; color: var(--text); text-decoration: none; }
+    .nav-brand {
+      font-family: Fraunces, serif; font-size: 1.25rem; font-weight: 700;
+      color: var(--text); text-decoration: none;
+    }
+
     .nav-links { display: flex; align-items: center; gap: 4px; }
+
     .nav-link {
       background: none; border: none; color: var(--muted);
       font: inherit; font-size: 0.86rem; font-weight: 600;
@@ -87,13 +93,16 @@
       text-decoration: none; transition: color 0.2s, background 0.2s;
     }
     .nav-link:hover { color: var(--text); background: var(--primary-soft); }
+
     .nav-right { display: flex; align-items: center; gap: 8px; }
+
     .theme-toggle {
       background: var(--card); border: 1px solid var(--ring); border-radius: 999px;
       width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
       cursor: pointer; font-size: 1rem; color: var(--text); transition: background 0.2s;
     }
     .theme-toggle:hover { background: var(--primary-soft); }
+
     .share-btn {
       background: var(--card); border: 1px solid var(--ring); border-radius: 999px;
       padding: 6px 13px; font: inherit; font-size: 0.82rem; font-weight: 600;
@@ -101,12 +110,14 @@
     }
     .share-btn:hover { background: var(--primary-soft); color: var(--text); }
 
+    /* CONTAINER */
     .container {
       width: min(1160px, 92vw); margin: 0 auto;
       padding: calc(var(--nav-h) + 28px) 0 80px;
       position: relative; z-index: 1;
     }
 
+    /* HERO */
     .hero {
       text-align: center; padding: 48px 20px 38px;
       background: linear-gradient(145deg, rgba(255,255,255,0.11), rgba(255,255,255,0.03));
@@ -141,6 +152,7 @@
     }
     .quote-mark { font-size: 1.5em; line-height: 0; vertical-align: -0.25em; opacity: 0.7; font-style: normal; }
 
+    /* SECTION */
     .section {
       margin-top: 24px; background: var(--panel); border: 1px solid var(--ring);
       border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px;
@@ -149,6 +161,7 @@
     .section h2 { margin: 0 0 16px; font-size: 1.25rem; font-weight: 700; }
     .section-anchor { scroll-margin-top: calc(var(--nav-h) + 12px); }
 
+    /* SKELETON */
     .skeleton {
       background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 75%);
       background-size: 200% 100%; animation: shimmer 1.4s infinite;
@@ -156,6 +169,7 @@
     }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
+    /* STATS */
     .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
     .stat-card {
       background: var(--card); border: 1px solid rgba(255,255,255,0.08);
@@ -165,6 +179,7 @@
     .stat-card .label { color: var(--muted); font-size: .88rem; }
     .stat-card .value { margin-top: 6px; font-size: 1.55rem; font-weight: 700; }
 
+    /* BLOOD PILLS */
     .blood-pills { margin-top: 14px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
     .pill {
       background: var(--panel-solid); border: 1px solid rgba(255,255,255,0.08);
@@ -178,6 +193,7 @@
     .pill-bar-fill.med { background: linear-gradient(90deg, #ff6b35, #ffaa80); }
     .pill-bar-fill.high { background: linear-gradient(90deg, var(--ok), #a8f0d8); }
 
+    /* TABS */
     .tabs {
       display: inline-flex; gap: 8px;
       background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
@@ -191,6 +207,7 @@
     .panel { display: none; }
     .panel.active { display: block; animation: fadeIn .35s ease; }
 
+    /* FORMS */
     .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .field-group { margin-bottom: 12px; }
     label { display: block; margin-bottom: 6px; font-size: .9rem; color: var(--muted); }
@@ -213,12 +230,13 @@
 
     .btn-outline {
       background: transparent; border: 1px solid var(--ring); border-radius: 10px;
-      padding: 8px 14px; cursor: pointer; color: var(--muted);
+      padding: 8px 14px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 0.88rem;
       transition: all 0.2s; font: inherit; font-size: 0.88rem; font-weight: 600;
     }
     .btn-outline:hover { background: var(--primary-soft); color: var(--text); border-color: var(--primary); }
 
     .inline-action { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin: 10px 0 12px; }
+
     .message { min-height: 22px; font-size: .92rem; margin-top: 8px; }
     .message.success { color: var(--ok); }
     .message.error { color: var(--error); }
@@ -230,10 +248,18 @@
     [data-theme="light"] .hero h1 {
       background: linear-gradient(160deg, #6b0000 0%, #a01020 35%, #c8192e 60%, #800010 100%);
       -webkit-background-clip: text; background-clip: text; color: transparent;
+      filter: drop-shadow(0 1px 0 rgba(255,255,255,0.4)) drop-shadow(0 2px 8px rgba(120,0,20,0.3)) drop-shadow(0 4px 14px rgba(0,0,0,0.15));
       animation: titleGlowLight 2.8s ease-in-out infinite;
     }
-    [data-theme="light"] .hero-quote { background: linear-gradient(135deg, #800020 0%, #b01030 50%, #800020 100%); -webkit-background-clip: text; background-clip: text; }
-    [data-theme="light"] .hero { background: linear-gradient(145deg, rgba(240,200,200,0.85), rgba(230,180,180,0.65)); border-color: rgba(140,10,40,0.3); }
+    [data-theme="light"] .hero-quote {
+      background: linear-gradient(135deg, #800020 0%, #b01030 50%, #800020 100%);
+      -webkit-background-clip: text; background-clip: text;
+      filter: drop-shadow(0 1px 4px rgba(140,0,30,0.3));
+    }
+    [data-theme="light"] .hero {
+      background: linear-gradient(145deg, rgba(240,200,200,0.85), rgba(230,180,180,0.65));
+      border-color: rgba(140,10,40,0.3);
+    }
     [data-theme="light"] .stat-card { background: rgba(180,60,60,0.14); border-color: rgba(140,10,40,0.2); }
     [data-theme="light"] .pill { background: #e8b8b8; border-color: rgba(140,10,40,0.2); }
     [data-theme="light"] .impact-number { background: linear-gradient(135deg, #8b0000, #c01030); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -247,17 +273,11 @@
     [data-theme="light"] .compat-table td { color: #1a0005; }
     [data-theme="light"] a { color: #8b0000; }
     [data-theme="light"] a:hover { color: #1a0005; }
-    [data-theme="light"] .nav-logo {
-      mix-blend-mode: multiply;
-      filter: drop-shadow(0 0 4px rgba(160,0,30,0.35));
-    }
-    [data-theme="light"] .logo-img {
-      mix-blend-mode: multiply;
-      filter: drop-shadow(0 0 8px rgba(160,0,30,0.35));
-    }
+    [data-theme="light"] .nav-logo { mix-blend-mode: normal; filter: none; }
+    [data-theme="light"] .logo-img { mix-blend-mode: normal; filter: drop-shadow(0 0 8px rgba(160,0,30,0.2)); }
     @keyframes titleGlowLight {
-      0%, 100% { filter: drop-shadow(0 1px 0 rgba(255,255,255,0.7)) drop-shadow(0 2px 10px rgba(160,10,30,0.22)); }
-      50% { filter: drop-shadow(0 1px 0 rgba(255,255,255,0.9)) drop-shadow(0 2px 16px rgba(180,20,40,0.32)); }
+      0%, 100% { filter: drop-shadow(0 1px 0 rgba(255,255,255,0.7)) drop-shadow(0 2px 10px rgba(160,10,30,0.22)) drop-shadow(0 4px 14px rgba(0,0,0,0.08)); }
+      50% { filter: drop-shadow(0 1px 0 rgba(255,255,255,0.9)) drop-shadow(0 2px 16px rgba(180,20,40,0.32)) drop-shadow(0 4px 20px rgba(0,0,0,0.1)); }
     }
 
     table { width: 100%; min-width: 700px; border-collapse: collapse; }
@@ -266,57 +286,114 @@
     a { color: #ffd9df; }
     a:hover { color: #ffffff; }
 
+    /* HOW IT WORKS */
     .how-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-    .how-card { background: var(--card); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 20px; text-align: center; transition: transform 0.25s ease; }
+    .how-card {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 20px; text-align: center; transition: transform 0.25s ease;
+    }
     .how-card:hover { transform: translateY(-3px); }
-    .how-step { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 999px; background: linear-gradient(135deg, var(--primary), #b51738); color: white; font-size: 0.8rem; font-weight: 700; margin-bottom: 10px; }
+    .how-step {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border-radius: 999px;
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      color: white; font-size: 0.8rem; font-weight: 700; margin-bottom: 10px;
+    }
     .how-icon { font-size: 2.2rem; margin-bottom: 8px; display: block; }
     .how-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
     .how-card p { font-size: 0.88rem; color: var(--muted); line-height: 1.55; }
 
+    /* IMPACT */
     .impact-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
     .impact-card { background: var(--card); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 20px; text-align: center; }
-    .impact-number { font-family: Fraunces, serif; font-size: 2.4rem; font-weight: 700; background: linear-gradient(135deg, #ffd6d6, #ff8fa3); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .impact-number {
+      font-family: Fraunces, serif; font-size: 2.4rem; font-weight: 700;
+      background: linear-gradient(135deg, #ffd6d6, #ff8fa3);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
     .impact-label { font-size: 0.88rem; color: var(--muted); margin-top: 4px; }
 
+    /* FAQ */
     .faq-item { border-bottom: 1px solid var(--ring); }
     .faq-item:last-child { border-bottom: none; }
-    .faq-q { width: 100%; background: none; border: none; color: var(--text); font: inherit; font-weight: 600; font-size: 0.95rem; text-align: left; padding: 14px 0; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .faq-q {
+      width: 100%; background: none; border: none; color: var(--text); font: inherit;
+      font-weight: 600; font-size: 0.95rem; text-align: left; padding: 14px 0; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
     .faq-q:hover { color: var(--primary); }
     .faq-arrow { font-size: 0.8rem; transition: transform 0.3s ease; flex-shrink: 0; color: var(--muted); }
     .faq-item.open .faq-arrow { transform: rotate(180deg); }
     .faq-a { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease; color: var(--muted); font-size: 0.9rem; line-height: 1.65; }
     .faq-item.open .faq-a { max-height: 200px; padding-bottom: 14px; }
 
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.78); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
+    /* MODAL */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.78); z-index: 200;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+    }
     .modal-overlay.open { opacity: 1; pointer-events: all; }
-    .modal { background: var(--panel-solid); border: 1px solid var(--ring); border-radius: 20px; padding: 28px; max-width: 480px; width: 100%; box-shadow: 0 30px 60px rgba(0,0,0,0.5); position: relative; transform: scale(0.95) translateY(10px); transition: transform 0.25s ease; }
+    .modal {
+      background: var(--panel-solid); border: 1px solid var(--ring); border-radius: 20px;
+      padding: 28px; max-width: 480px; width: 100%;
+      box-shadow: 0 30px 60px rgba(0,0,0,0.5); position: relative;
+      transform: scale(0.95) translateY(10px); transition: transform 0.25s ease;
+    }
     .modal-overlay.open .modal { transform: scale(1) translateY(0); }
-    .modal-close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1; }
+    .modal-close {
+      position: absolute; top: 14px; right: 16px;
+      background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1;
+    }
     .modal-close:hover { color: var(--text); }
     .modal-icon { font-size: 3rem; text-align: center; display: block; margin-bottom: 12px; }
     .modal h3 { font-family: Fraunces, serif; font-size: 1.4rem; font-weight: 700; text-align: center; margin-bottom: 8px; }
     .modal p { text-align: center; color: var(--muted); font-size: 0.92rem; margin-bottom: 16px; line-height: 1.55; }
 
-    .id-copy-row { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.06); border: 1px solid var(--ring); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; }
+    .id-copy-row {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.06); border: 1px solid var(--ring);
+      border-radius: 10px; padding: 10px 14px; margin-bottom: 16px;
+    }
     .id-copy-row span { flex: 1; font-weight: 700; font-size: 0.95rem; word-break: break-all; }
-    .copy-btn { background: var(--primary-soft); border: none; border-radius: 8px; padding: 6px 12px; color: var(--text); font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
+    .copy-btn {
+      background: var(--primary-soft); border: none; border-radius: 8px;
+      padding: 6px 12px; color: var(--text); font: inherit; font-size: 0.82rem;
+      font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 0.2s;
+    }
     .copy-btn:hover { background: var(--primary); color: white; }
 
+    /* COMPAT TABLE */
     .compat-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-top: 12px; }
     .compat-table th, .compat-table td { padding: 8px 10px; border-bottom: 1px solid var(--ring); text-align: left; }
     .compat-table th { color: #ffd2d2; font-size: 0.82rem; }
     .compat-types { color: var(--ok); font-size: 0.82rem; }
 
+    /* SHARE */
     .share-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
-    .share-option { background: var(--card); border: 1px solid var(--ring); border-radius: 12px; padding: 14px 10px; text-align: center; cursor: pointer; text-decoration: none; color: var(--text); font-size: 0.84rem; font-weight: 600; transition: background 0.2s, transform 0.2s; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .share-option {
+      background: var(--card); border: 1px solid var(--ring); border-radius: 12px;
+      padding: 14px 10px; text-align: center; cursor: pointer; text-decoration: none;
+      color: var(--text); font-size: 0.84rem; font-weight: 600;
+      transition: background 0.2s, transform 0.2s; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
     .share-option:hover { background: var(--primary-soft); transform: translateY(-2px); }
     .share-icon { font-size: 1.5rem; }
 
-    .back-to-top { position: fixed; bottom: 24px; right: 24px; z-index: 99; width: 42px; height: 42px; border-radius: 999px; background: linear-gradient(135deg, var(--primary), #b51738); border: none; color: white; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 20px rgba(180,30,50,0.45); opacity: 0; transform: translateY(12px); transition: opacity 0.3s, transform 0.3s; pointer-events: none; }
+    /* BACK TO TOP */
+    .back-to-top {
+      position: fixed; bottom: 24px; right: 24px; z-index: 99;
+      width: 42px; height: 42px; border-radius: 999px;
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      border: none; color: white; font-size: 1.1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 20px rgba(180,30,50,0.45);
+      opacity: 0; transform: translateY(12px); transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+    }
     .back-to-top.visible { opacity: 1; transform: translateY(0); pointer-events: all; }
     .back-to-top:hover { transform: translateY(-2px); }
 
+    /* ANIMATIONS */
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes riseIn { from { opacity: 0; transform: translateY(18px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
     @keyframes titleGlow {
@@ -324,7 +401,10 @@
       50% { filter: drop-shadow(0 0 14px rgba(255,252,242,0.55)) drop-shadow(0 0 28px rgba(241,226,204,0.42)) drop-shadow(0 4px 14px rgba(0,0,0,0.38)); }
     }
 
-    @media (max-width: 980px) { .stats-grid, .blood-pills, .grid-2, .how-grid, .impact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    /* RESPONSIVE */
+    @media (max-width: 980px) {
+      .stats-grid, .blood-pills, .grid-2, .how-grid, .impact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     @media (max-width: 640px) {
       .container { width: 94vw; }
       .stats-grid, .blood-pills, .grid-2, .how-grid, .impact-grid { grid-template-columns: 1fr; }
@@ -338,6 +418,7 @@
 </head>
 <body>
 
+  <!-- NAVBAR -->
   <nav class="navbar">
     <a href="#hero" class="nav-brand"><img src="./logo.png" alt="" class="nav-logo"/> BloodOps</a>
     <div class="nav-links">
@@ -355,6 +436,7 @@
 
   <div class="container">
 
+    <!-- HERO -->
     <section class="hero section-anchor" id="hero">
       <div class="hero-brand">
         <img class="logo-img" src="./logo.png" width="210" height="210" alt="BloodOps logo" decoding="async" />
@@ -363,6 +445,7 @@
       </div>
     </section>
 
+    <!-- LIVE STATS -->
     <section class="section section-anchor" id="stats">
       <h2>Live Stats</h2>
       <div id="statsMessage" class="message info"></div>
@@ -385,6 +468,7 @@
       <button class="btn-outline" onclick="openCompatModal()" style="margin-top:14px;">🩸 Blood Type Compatibility Chart</button>
     </section>
 
+    <!-- TABS -->
     <section class="section section-anchor" id="action">
       <div class="tabs">
         <button id="donorTabBtn" class="tab-btn active" type="button">Donor</button>
@@ -397,12 +481,17 @@
           <div class="grid-2">
             <div class="field-group"><label for="donorName">Name</label><input id="donorName" required type="text" /></div>
             <div class="field-group"><label for="donorBloodType">Blood Type</label>
-              <select id="donorBloodType" required><option value="">Select blood type</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>O+</option><option>O-</option><option>AB+</option><option>AB-</option></select>
+              <select id="donorBloodType" required>
+                <option value="">Select blood type</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+              </select>
             </div>
             <div class="field-group"><label for="donorLocation">Location</label><input id="donorLocation" required type="text" /></div>
             <div class="field-group"><label for="donorPhone">Phone Number</label><input id="donorPhone" required type="text" /></div>
+            <div class="field-group"><label for="donorEmail">Email Address</label><input id="donorEmail" required type="email" placeholder="you@email.com" /></div>
             <div class="field-group"><label for="donorAvailability">Availability</label>
-              <select id="donorAvailability" required><option value="">Select availability</option><option>Available</option><option>Unavailable</option></select>
+              <select id="donorAvailability" required>
+                <option value="">Select availability</option><option>Available</option><option>Unavailable</option>
+              </select>
             </div>
             <div class="field-group"><label for="donorLastDonationDate">Last Donation Date</label><input id="donorLastDonationDate" required type="date" /></div>
           </div>
@@ -427,11 +516,15 @@
           <div class="grid-2">
             <div class="field-group"><label for="hospitalName">Hospital Name</label><input id="hospitalName" required type="text" /></div>
             <div class="field-group"><label for="requestBloodType">Blood Type Needed</label>
-              <select id="requestBloodType" required><option value="">Select blood type</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>O+</option><option>O-</option><option>AB+</option><option>AB-</option></select>
+              <select id="requestBloodType" required>
+                <option value="">Select blood type</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+              </select>
             </div>
             <div class="field-group"><label for="requestQuantity">Quantity (units)</label><input id="requestQuantity" required min="1" type="number" /></div>
             <div class="field-group"><label for="requestUrgency">Urgency</label>
-              <select id="requestUrgency" required><option value="">Select urgency</option><option>Normal</option><option>Urgent</option></select>
+              <select id="requestUrgency" required>
+                <option value="">Select urgency</option><option>Normal</option><option>Urgent</option>
+              </select>
             </div>
           </div>
           <button id="requestSubmitBtn" class="btn" type="submit">Submit Request</button>
@@ -451,15 +544,32 @@
       </div>
     </section>
 
+    <!-- HOW IT WORKS -->
     <section class="section section-anchor" id="how">
       <h2>How It Works</h2>
       <div class="how-grid">
-        <div class="how-card"><div class="how-step">1</div><span class="how-icon">📋</span><h3>Register as Donor</h3><p>Fill in your details, blood type, and availability. You'll receive a unique Donor ID to track your contributions.</p></div>
-        <div class="how-card"><div class="how-step">2</div><span class="how-icon">🔍</span><h3>Smart Matching</h3><p>When a hospital submits a request, BloodOps automatically finds compatible donors based on blood type and availability.</p></div>
-        <div class="how-card"><div class="how-step">3</div><span class="how-icon">❤️</span><h3>Donate & Save Lives</h3><p>Head to the hospital, complete your donation, and receive a certificate. Your impact is tracked in real time.</p></div>
+        <div class="how-card">
+          <div class="how-step">1</div>
+          <span class="how-icon">📋</span>
+          <h3>Register as Donor</h3>
+          <p>Fill in your details, blood type, and availability. You'll receive a unique Donor ID to track your contributions.</p>
+        </div>
+        <div class="how-card">
+          <div class="how-step">2</div>
+          <span class="how-icon">🔍</span>
+          <h3>Smart Matching</h3>
+          <p>When a hospital submits a request, BloodOps automatically finds compatible donors based on blood type and availability.</p>
+        </div>
+        <div class="how-card">
+          <div class="how-step">3</div>
+          <span class="how-icon">❤️</span>
+          <h3>Donate & Save Lives</h3>
+          <p>Head to the hospital, complete your donation, and receive a certificate. Your impact is tracked in real time.</p>
+        </div>
       </div>
     </section>
 
+    <!-- IMPACT -->
     <section class="section section-anchor" id="impact">
       <h2>Our Impact</h2>
       <div class="impact-grid">
@@ -469,30 +579,52 @@
       </div>
     </section>
 
+    <!-- FAQ -->
     <section class="section section-anchor" id="faq">
       <h2>Frequently Asked Questions</h2>
-      <div class="faq-item"><button class="faq-q">Who can donate blood? <span class="faq-arrow">▼</span></button><div class="faq-a">Most healthy adults aged 18–65 weighing at least 50kg can donate. You should not have donated in the last 3 months and must be free from infections at the time of donation.</div></div>
-      <div class="faq-item"><button class="faq-q">How often can I donate? <span class="faq-arrow">▼</span></button><div class="faq-a">Whole blood can be donated every 3 months (90 days). Your last donation date is tracked in BloodOps to keep you safe.</div></div>
-      <div class="faq-item"><button class="faq-q">What is a Donor ID? <span class="faq-arrow">▼</span></button><div class="faq-a">Your Donor ID is a unique identifier assigned when you register. Use it to check your donation history, download certificates, and track your contributions over time.</div></div>
-      <div class="faq-item"><button class="faq-q">How does blood type matching work? <span class="faq-arrow">▼</span></button><div class="faq-a">BloodOps uses ABO and Rh compatibility rules to match donors to hospital requests. O- is the universal donor, while AB+ can receive from all types. Click the compatibility chart button for a full overview.</div></div>
-      <div class="faq-item"><button class="faq-q">Is my personal information safe? <span class="faq-arrow">▼</span></button><div class="faq-a">Yes. BloodOps stores only the minimum data required to facilitate donations. Your phone number is only shared with verified hospitals when a match is confirmed.</div></div>
+      <div class="faq-item">
+        <button class="faq-q">Who can donate blood? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Most healthy adults aged 18–65 weighing at least 50kg can donate. You should not have donated in the last 3 months and must be free from infections at the time of donation.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">How often can I donate? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Whole blood can be donated every 3 months (90 days). Your last donation date is tracked in BloodOps to keep you safe.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">What is a Donor ID? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Your Donor ID is a unique identifier assigned when you register. Use it to check your donation history, download certificates, and track your contributions over time.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">How does blood type matching work? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">BloodOps uses ABO and Rh compatibility rules to match donors to hospital requests. O- is the universal donor, while AB+ can receive from all types. Click the compatibility chart button for a full overview.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Is my personal information safe? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Yes. BloodOps stores only the minimum data required to facilitate donations. Your phone number is only shared with verified hospitals when a match is confirmed.</div>
+      </div>
     </section>
 
   </div>
 
+  <!-- BACK TO TOP -->
   <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 
+  <!-- CONFIRMATION MODAL -->
   <div class="modal-overlay" id="confirmModal">
     <div class="modal">
       <button class="modal-close" onclick="closeModal('confirmModal')">✕</button>
       <span class="modal-icon" id="modalIcon">✅</span>
       <h3 id="modalTitle">Success!</h3>
       <p id="modalMessage"></p>
-      <div class="id-copy-row" id="idCopyRow" style="display:none;"><span id="modalIdValue"></span><button class="copy-btn" onclick="copyId()">Copy ID</button></div>
+      <div class="id-copy-row" id="idCopyRow" style="display:none;">
+        <span id="modalIdValue"></span>
+        <button class="copy-btn" onclick="copyId()">Copy ID</button>
+      </div>
       <button class="btn" style="width:100%;margin-top:4px;" onclick="closeModal('confirmModal')">Done</button>
     </div>
   </div>
 
+  <!-- COMPATIBILITY MODAL -->
   <div class="modal-overlay" id="compatModal">
     <div class="modal" style="max-width:560px;">
       <button class="modal-close" onclick="closeModal('compatModal')">✕</button>
@@ -516,6 +648,7 @@
     </div>
   </div>
 
+  <!-- SHARE MODAL -->
   <div class="modal-overlay" id="shareModal">
     <div class="modal">
       <button class="modal-close" onclick="closeModal('shareModal')">✕</button>
@@ -534,9 +667,10 @@
   </div>
 
   <script>
-    const API_URL = 'https://73g68a41r9.execute-api.us-east-1.amazonaws.com/prod';
+    const API_URL = 'YOUR_API_GATEWAY_URL';
     const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
+    // THEME
     const themeToggle = document.getElementById('themeToggle');
     const savedTheme = localStorage.getItem('bloodops-theme') || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
@@ -548,9 +682,11 @@
       localStorage.setItem('bloodops-theme', next);
     });
 
+    // BACK TO TOP
     const backToTop = document.getElementById('backToTop');
     window.addEventListener('scroll', () => backToTop.classList.toggle('visible', window.scrollY > 300));
 
+    // MODALS
     function openModal(id) { document.getElementById(id).classList.add('open'); }
     function closeModal(id) { document.getElementById(id).classList.remove('open'); }
     document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
@@ -560,18 +696,28 @@
       document.getElementById('modalTitle').textContent = title;
       document.getElementById('modalMessage').textContent = message;
       const idRow = document.getElementById('idCopyRow');
-      if (idValue) { document.getElementById('modalIdValue').textContent = `${idLabel}: ${idValue}`; idRow.style.display = 'flex'; idRow._id = idValue; }
-      else { idRow.style.display = 'none'; }
+      if (idValue) {
+        document.getElementById('modalIdValue').textContent = `${idLabel}: ${idValue}`;
+        idRow.style.display = 'flex';
+        idRow._id = idValue;
+      } else {
+        idRow.style.display = 'none';
+      }
       openModal('confirmModal');
     }
 
     function copyId() {
       const idRow = document.getElementById('idCopyRow');
-      navigator.clipboard.writeText(idRow._id).then(() => { const btn = idRow.querySelector('.copy-btn'); btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy ID', 2000); });
+      navigator.clipboard.writeText(idRow._id).then(() => {
+        const btn = idRow.querySelector('.copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy ID', 2000);
+      });
     }
 
     function openCompatModal() { openModal('compatModal'); }
 
+    // SHARE
     function openShareModal() {
       const url = encodeURIComponent(window.location.href);
       const text = encodeURIComponent('BloodOps — Every drop counts. Every second matters. Register as a donor today!');
@@ -581,12 +727,22 @@
       document.getElementById('shareEmail').href = `mailto:?subject=BloodOps&body=${text}%20${window.location.href}`;
       openModal('shareModal');
     }
-    function copyLink() { navigator.clipboard.writeText(window.location.href).then(() => { const el = document.getElementById('copyLinkLabel'); el.textContent = 'Copied!'; setTimeout(() => el.textContent = 'Copy Link', 2000); }); }
-    function nativeShare() { if (navigator.share) navigator.share({ title: 'BloodOps', text: 'Every drop counts. Every second matters.', url: window.location.href }); }
+    function copyLink() {
+      navigator.clipboard.writeText(window.location.href).then(() => {
+        const el = document.getElementById('copyLinkLabel');
+        el.textContent = 'Copied!';
+        setTimeout(() => el.textContent = 'Copy Link', 2000);
+      });
+    }
+    function nativeShare() {
+      if (navigator.share) navigator.share({ title: 'BloodOps', text: 'Every drop counts. Every second matters.', url: window.location.href });
+    }
 
+    // HELPERS
     function setMessage(el, text, type) { el.textContent = text || ''; el.className = `message ${type || ''}`.trim(); }
     function setLoadingButton(btn, loading, loadTxt, normTxt) { btn.disabled = loading; btn.textContent = loading ? loadTxt : normTxt; }
 
+    // FIX 1 — added blood_type_availability as first fallback
     function normalizeAdminData(data) {
       return {
         totalDonors: data.total_donors ?? data.totalDonors ?? 0,
@@ -598,10 +754,16 @@
 
     function animateCount(el, target) {
       let start = 0; const dur = 800;
-      const step = (ts) => { if (!start) start = ts; const p = Math.min((ts - start) / dur, 1); el.textContent = Math.floor(p * target); if (p < 1) requestAnimationFrame(step); else el.textContent = target; };
+      const step = (ts) => {
+        if (!start) start = ts;
+        const p = Math.min((ts - start) / dur, 1);
+        el.textContent = Math.floor(p * target);
+        if (p < 1) requestAnimationFrame(step); else el.textContent = target;
+      };
       requestAnimationFrame(step);
     }
 
+    // STATS
     const bloodTypeEls = { 'A+': document.getElementById('bAPlus'), 'A-': document.getElementById('bANeg'), 'B+': document.getElementById('bBPlus'), 'B-': document.getElementById('bBNeg'), 'O+': document.getElementById('bOPlus'), 'O-': document.getElementById('bONeg'), 'AB+': document.getElementById('bABPlus'), 'AB-': document.getElementById('bABNeg') };
     const barEls = { 'A+': document.getElementById('barAPlus'), 'A-': document.getElementById('barANeg'), 'B+': document.getElementById('barBPlus'), 'B-': document.getElementById('barBNeg'), 'O+': document.getElementById('barOPlus'), 'O-': document.getElementById('barONeg'), 'AB+': document.getElementById('barABPlus'), 'AB-': document.getElementById('barABNeg') };
 
@@ -613,15 +775,19 @@
         if (!res.ok) throw new Error('Failed to fetch live stats.');
         const raw = await res.json();
         const data = normalizeAdminData(raw);
+
         ['totalDonors','totalRequests','totalDonations','bloodTypesAvailable'].forEach(id => { document.getElementById(id).innerHTML = ''; });
+
         animateCount(document.getElementById('totalDonors'), data.totalDonors);
         animateCount(document.getElementById('totalRequests'), data.totalRequests);
         animateCount(document.getElementById('totalDonations'), data.totalDonations);
         const available = bloodTypes.filter(t => Number(data.bloodTypeCounts[t] || 0) > 0).length;
         animateCount(document.getElementById('bloodTypesAvailable'), available);
+
         animateCount(document.getElementById('impactDonors'), data.totalDonors);
         animateCount(document.getElementById('impactDonations'), data.totalDonations);
         animateCount(document.getElementById('impactLives'), Math.floor(data.totalDonations * 3));
+
         const maxVal = Math.max(...bloodTypes.map(t => Number(data.bloodTypeCounts[t] || 0)), 1);
         bloodTypes.forEach(type => {
           const count = Number(data.bloodTypeCounts[type] || 0);
@@ -631,32 +797,61 @@
           bar.style.width = pct + '%';
           bar.className = 'pill-bar-fill ' + (pct < 25 ? 'low' : pct < 60 ? 'med' : 'high');
         });
+
         setMessage(statsMessage, 'Live stats updated.', 'success');
-      } catch (err) { setMessage(document.getElementById('statsMessage'), err.message || 'Unable to load stats.', 'error'); }
+      } catch (err) {
+        setMessage(document.getElementById('statsMessage'), err.message || 'Unable to load stats.', 'error');
+      }
     }
 
-    document.getElementById('donorTabBtn').addEventListener('click', () => { document.getElementById('donorTabBtn').classList.add('active'); document.getElementById('hospitalTabBtn').classList.remove('active'); document.getElementById('donorPanel').classList.add('active'); document.getElementById('hospitalPanel').classList.remove('active'); });
-    document.getElementById('hospitalTabBtn').addEventListener('click', () => { document.getElementById('hospitalTabBtn').classList.add('active'); document.getElementById('donorTabBtn').classList.remove('active'); document.getElementById('hospitalPanel').classList.add('active'); document.getElementById('donorPanel').classList.remove('active'); });
+    // TABS
+    document.getElementById('donorTabBtn').addEventListener('click', () => {
+      document.getElementById('donorTabBtn').classList.add('active'); document.getElementById('hospitalTabBtn').classList.remove('active');
+      document.getElementById('donorPanel').classList.add('active'); document.getElementById('hospitalPanel').classList.remove('active');
+    });
+    document.getElementById('hospitalTabBtn').addEventListener('click', () => {
+      document.getElementById('hospitalTabBtn').classList.add('active'); document.getElementById('donorTabBtn').classList.remove('active');
+      document.getElementById('hospitalPanel').classList.add('active'); document.getElementById('donorPanel').classList.remove('active');
+    });
 
+    // DONOR FORM
     document.getElementById('donorForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const btn = document.getElementById('donorSubmitBtn'); const msg = document.getElementById('donorFormMessage');
-      setLoadingButton(btn, true, 'Submitting...', 'Register Donor'); setMessage(msg, '', '');
-      const payload = { name: document.getElementById('donorName').value.trim(), blood_type: document.getElementById('donorBloodType').value, location: document.getElementById('donorLocation').value.trim(), phone: document.getElementById('donorPhone').value.trim(), availability: document.getElementById('donorAvailability').value, last_donation_date: document.getElementById('donorLastDonationDate').value };
+      const btn = document.getElementById('donorSubmitBtn');
+      const msg = document.getElementById('donorFormMessage');
+      setLoadingButton(btn, true, 'Submitting...', 'Register Donor');
+      setMessage(msg, '', '');
+      const payload = {
+        name: document.getElementById('donorName').value.trim(),
+        blood_type: document.getElementById('donorBloodType').value,
+        location: document.getElementById('donorLocation').value.trim(),
+        phone: document.getElementById('donorPhone').value.trim(),
+        email: document.getElementById('donorEmail').value.trim(),
+        availability: document.getElementById('donorAvailability').value,
+        last_donation_date: document.getElementById('donorLastDonationDate').value
+      };
       try {
         const res = await fetch(`${API_URL}/donors`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!res.ok) throw new Error('Failed to register donor.');
         const data = await res.json();
+        // FIX 2 — added data.DonorID as first fallback
         const donorId = data.DonorID ?? data.donor_id ?? data.donorId ?? data.id ?? 'generated';
-        document.getElementById('donorForm').reset(); fetchLiveStats();
+        document.getElementById('donorForm').reset();
+        fetchLiveStats();
         showConfirmModal('🎉', 'Donor Registered!', `Thank you, ${payload.name}! Save your Donor ID below to check your donation history.`, 'Donor ID', donorId);
-      } catch (err) { setMessage(msg, err.message || 'Error registering donor.', 'error'); }
-      finally { setLoadingButton(btn, false, 'Submitting...', 'Register Donor'); }
+      } catch (err) {
+        setMessage(msg, err.message || 'Error registering donor.', 'error');
+      } finally {
+        setLoadingButton(btn, false, 'Submitting...', 'Register Donor');
+      }
     });
 
+    // HISTORY
     document.getElementById('historySearchBtn').addEventListener('click', async () => {
       const donorId = document.getElementById('historyDonorId').value.trim();
-      const wrap = document.getElementById('historyTableWrap'); const body = document.getElementById('historyTableBody'); const msg = document.getElementById('historyMessage');
+      const wrap = document.getElementById('historyTableWrap');
+      const body = document.getElementById('historyTableBody');
+      const msg = document.getElementById('historyMessage');
       wrap.style.display = 'none'; body.innerHTML = '';
       if (!donorId) { setMessage(msg, 'Please enter a donor ID.', 'error'); return; }
       setMessage(msg, 'Loading donation history...', 'info');
@@ -664,32 +859,57 @@
         const res = await fetch(`${API_URL}/history?donor_id=${encodeURIComponent(donorId)}`);
         if (!res.ok) throw new Error('Failed to fetch donation history.');
         const data = await res.json();
+        // FIX 5 — added data.Items as first fallback
         const history = Array.isArray(data) ? data : (data.Items || data.history || []);
         if (history.length === 0) { setMessage(msg, 'No donation history found', 'info'); return; }
-        body.innerHTML = history.map(item => { const date = item.date ?? item.DonationDate ?? item.donation_date ?? '-'; const hospital = item.HospitalName ?? item.hospital_name ?? item.hospital ?? '-'; const certUrl = item.CertificateURL ?? item.certificate_url ?? item.certificateUrl ?? ''; const certCell = certUrl ? `<a href="${certUrl}" target="_blank" rel="noopener">Download</a>` : 'Not generated'; return `<tr><td>${date}</td><td>${hospital}</td><td>${certCell}</td></tr>`; }).join('');
-        wrap.style.display = 'block'; setMessage(msg, `Found ${history.length} record(s).`, 'success');
+        body.innerHTML = history.map(item => {
+          const date = item.date ?? item.DonationDate ?? item.donation_date ?? '-';
+          const hospital = item.HospitalName ?? item.hospital_name ?? item.hospital ?? '-';
+          const certUrl = item.CertificateURL ?? item.certificate_url ?? item.certificateUrl ?? '';
+          const certCell = certUrl ? `<a href="${certUrl}" target="_blank" rel="noopener">Download</a>` : 'Not generated';
+          return `<tr><td>${date}</td><td>${hospital}</td><td>${certCell}</td></tr>`;
+        }).join('');
+        wrap.style.display = 'block';
+        setMessage(msg, `Found ${history.length} record(s).`, 'success');
       } catch (err) { setMessage(msg, err.message || 'Error loading history.', 'error'); }
     });
 
+    // REQUEST FORM
     document.getElementById('requestForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const btn = document.getElementById('requestSubmitBtn'); const msg = document.getElementById('requestFormMessage');
-      setLoadingButton(btn, true, 'Submitting...', 'Submit Request'); setMessage(msg, '', '');
-      const payload = { hospital_name: document.getElementById('hospitalName').value.trim(), blood_type: document.getElementById('requestBloodType').value, quantity: Number(document.getElementById('requestQuantity').value), urgency: document.getElementById('requestUrgency').value };
+      const btn = document.getElementById('requestSubmitBtn');
+      const msg = document.getElementById('requestFormMessage');
+      setLoadingButton(btn, true, 'Submitting...', 'Submit Request');
+      setMessage(msg, '', '');
+      const payload = {
+        hospital_name: document.getElementById('hospitalName').value.trim(),
+        blood_type: document.getElementById('requestBloodType').value,
+        quantity: Number(document.getElementById('requestQuantity').value),
+        urgency: document.getElementById('requestUrgency').value
+      };
       try {
         const res = await fetch(`${API_URL}/requests`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!res.ok) throw new Error('Failed to submit request.');
         const data = await res.json();
+        // FIX 3 — added data.RequestID as first fallback
         const requestId = data.RequestID ?? data.request_id ?? data.requestId ?? data.id ?? 'generated';
-        document.getElementById('requestForm').reset(); fetchLiveStats();
+        document.getElementById('requestForm').reset();
+        fetchLiveStats();
         showConfirmModal('🏥', 'Request Submitted!', `Blood request from ${payload.hospital_name} submitted. Use the Request ID to find matching donors.`, 'Request ID', requestId);
-      } catch (err) { setMessage(msg, err.message || 'Error submitting request.', 'error'); }
-      finally { setLoadingButton(btn, false, 'Submitting...', 'Submit Request'); }
+      } catch (err) {
+        setMessage(msg, err.message || 'Error submitting request.', 'error');
+      } finally {
+        setLoadingButton(btn, false, 'Submitting...', 'Submit Request');
+      }
     });
 
+    // MATCH SEARCH
     document.getElementById('matchSearchBtn').addEventListener('click', async () => {
       const requestId = document.getElementById('matchRequestId').value.trim();
-      const body = document.getElementById('matchTableBody'); const wrap = document.getElementById('matchTableWrap'); const msg = document.getElementById('matchMessage'); const count = document.getElementById('matchCount');
+      const body = document.getElementById('matchTableBody');
+      const wrap = document.getElementById('matchTableWrap');
+      const msg = document.getElementById('matchMessage');
+      const count = document.getElementById('matchCount');
       body.innerHTML = ''; wrap.style.display = 'none'; count.textContent = '';
       if (!requestId) { setMessage(msg, 'Please enter a request ID.', 'error'); return; }
       setMessage(msg, 'Finding matching donors...', 'info');
@@ -697,16 +917,24 @@
         const res = await fetch(`${API_URL}/match?request_id=${encodeURIComponent(requestId)}`);
         if (!res.ok) throw new Error('Failed to fetch matching donors.');
         const data = await res.json();
+        // FIX 4 — added data.matching_donors as first fallback
         const donors = Array.isArray(data) ? data : (data.matching_donors || data.matches || data.donors || []);
         if (donors.length === 0) { setMessage(msg, 'No matching donors found', 'info'); return; }
         body.innerHTML = donors.map(d => `<tr><td>${d.Name ?? d.name ?? d.donor_name ?? '-'}</td><td>${d.BloodType ?? d.blood_type ?? d.bloodType ?? '-'}</td><td>${d.Location ?? d.location ?? '-'}</td><td>${d.Phone ?? d.phone ?? '-'}</td><td>${d.Availability ?? d.availability ?? '-'}</td></tr>`).join('');
-        count.textContent = `Total matches: ${donors.length}`; wrap.style.display = 'block';
+        count.textContent = `Total matches: ${donors.length}`;
+        wrap.style.display = 'block';
         setMessage(msg, 'Matching donors loaded.', 'success');
       } catch (err) { setMessage(msg, err.message || 'Error finding donors.', 'error'); }
     });
 
+    // FAQ
     document.querySelectorAll('.faq-q').forEach(btn => {
-      btn.addEventListener('click', () => { const item = btn.closest('.faq-item'); const wasOpen = item.classList.contains('open'); document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open')); if (!wasOpen) item.classList.add('open'); });
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.faq-item');
+        const wasOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open'));
+        if (!wasOpen) item.classList.add('open');
+      });
     });
 
     fetchLiveStats();
