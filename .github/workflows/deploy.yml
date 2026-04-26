@@ -8,7 +8,10 @@ on:
 jobs:
   deploy:
     name: Deploy BloodOps to AWS
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+
+    env:
+      TF_VERSION: "1.11.4"
 
     steps:
 
@@ -29,9 +32,8 @@ jobs:
 
       - name: Install Terraform manually
         run: |
-          TERRAFORM_VERSION="1.11.4"
-          wget -q https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
-          unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+          wget -q https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
+          unzip terraform_${TF_VERSION}_linux_amd64.zip
           sudo mv terraform /usr/local/bin/
           terraform version
 
@@ -48,14 +50,20 @@ jobs:
 
       - name: Terraform Init
         working-directory: terraform
-        run: terraform init
+        env:
+          TF_SKIP_PROVIDER_VERIFY: "1"
+        run: terraform init -upgrade
 
       - name: Terraform Plan
         working-directory: terraform
+        env:
+          TF_SKIP_PROVIDER_VERIFY: "1"
         run: terraform plan
 
       - name: Terraform Apply
         working-directory: terraform
+        env:
+          TF_SKIP_PROVIDER_VERIFY: "1"
         run: terraform apply -auto-approve
 
       - name: Deploy frontend to S3
