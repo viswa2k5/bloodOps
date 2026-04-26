@@ -342,10 +342,6 @@ resource "aws_lambda_function" "admin_function" {
   }
 }
 
-resource "aws_cloudwatch_log_group" "admin_logs" {
-  name              = "/aws/lambda/bloodops-admin-function"
-  retention_in_days = 7
-}
 
 # ============================================================
 # API GATEWAY
