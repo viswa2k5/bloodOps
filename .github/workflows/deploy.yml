@@ -12,25 +12,27 @@ jobs:
 
     steps:
 
-      # Step 1 - Checkout the code from GitHub
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Step 2 - Setup Python for Lambda packaging
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # Step 3 - Configure AWS credentials using GitHub secrets
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # Step 4 - Build reportlab Lambda Layer for certificate function
+      - name: Fix HashiCorp GPG key
+        run: |
+          wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt-get update && sudo apt-get install -y terraform
+
       - name: Build reportlab Lambda Layer
         run: |
           mkdir -p terraform/layer/python
@@ -39,32 +41,21 @@ jobs:
           zip -r ../reportlab_layer.zip python/
           cd ../..
 
-      # Step 5 - Create zips directory for Terraform
       - name: Create zips directory
         run: mkdir -p terraform/zips
 
-      # Step 6 - Setup Terraform
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.11.0
-
-      # Step 7 - Terraform Init
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
 
-      # Step 8 - Terraform Plan
       - name: Terraform Plan
         working-directory: terraform
         run: terraform plan
 
-      # Step 9 - Terraform Apply
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -auto-approve
 
-      # Step 10 - Deploy frontend to S3 (exclude admin.html)
       - name: Deploy frontend to S3
         run: |
           aws s3 sync frontend/ s3://bloodops-frontend-bucket/ \
