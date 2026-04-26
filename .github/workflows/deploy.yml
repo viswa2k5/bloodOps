@@ -32,6 +32,31 @@ jobs:
           curl -fsSL https://get.opentofu.org/install-opentofu.sh | sudo bash -s -- --install-method standalone
           tofu version
 
+      - name: Cleanup existing AWS resources
+        run: |
+          echo "Deleting Lambda functions..."
+          aws lambda delete-function --function-name bloodops-donor-function 2>/dev/null || true
+          aws lambda delete-function --function-name bloodops-request-function 2>/dev/null || true
+          aws lambda delete-function --function-name bloodops-match-function 2>/dev/null || true
+          aws lambda delete-function --function-name bloodops-history-function 2>/dev/null || true
+          aws lambda delete-function --function-name bloodops-certificate-function 2>/dev/null || true
+          aws lambda delete-function --function-name bloodops-reminder-function 2>/dev/null || true
+          aws lambda delete-function --function-name bloodops-admin-function 2>/dev/null || true
+          echo "Deleting IAM roles..."
+          aws iam delete-role-policy --role-name bloodops-lambda-role --policy-name bloodops-lambda-policy 2>/dev/null || true
+          aws iam delete-role --role-name bloodops-lambda-role 2>/dev/null || true
+          aws iam delete-role-policy --role-name bloodops-eventbridge-role --policy-name bloodops-eventbridge-policy 2>/dev/null || true
+          aws iam delete-role --role-name bloodops-eventbridge-role 2>/dev/null || true
+          echo "Deleting CloudWatch log groups..."
+          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-donor-function 2>/dev/null || true
+          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-request-function 2>/dev/null || true
+          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-match-function 2>/dev/null || true
+          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-history-function 2>/dev/null || true
+          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-certificate-function 2>/dev/null || true
+          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-reminder-function 2>/dev/null || true
+          aws logs delete-log-group --log-group-name /aws/lambda/bloodops-admin-function 2>/dev/null || true
+          echo "Cleanup complete!"
+
       - name: Build reportlab Lambda Layer
         run: |
           mkdir -p terraform/layer/python
