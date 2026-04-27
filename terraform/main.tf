@@ -823,6 +823,9 @@ resource "aws_api_gateway_stage" "bloodops_stage" {
   deployment_id = aws_api_gateway_deployment.bloodops_deployment.id
   rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
   stage_name    = "prod"
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 # ============================================================
@@ -926,6 +929,9 @@ resource "aws_scheduler_schedule" "daily_reminder" {
   target {
     arn      = aws_lambda_function.reminder_function.arn
     role_arn = aws_iam_role.eventbridge_role.arn
+  }
+  lifecycle {
+    ignore_changes = all
   }
 }
 
