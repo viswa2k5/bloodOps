@@ -924,7 +924,7 @@ resource "aws_lambda_permission" "certificate_api_permission" {
 }
 
 resource "aws_lambda_permission" "admin_api_permission" {
-  statement_id  = "AllowAPIGatewayInvokeAdmin"
+  statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.admin_function.function_name
   principal     = "apigateway.amazonaws.com"
