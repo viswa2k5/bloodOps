@@ -103,9 +103,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
       },
       {
         Effect = "Allow"
-        Action = [
-          "sns:Publish"
-        ]
+        Action = ["sns:Publish"]
         Resource = [
           aws_sns_topic.urgent_alerts.arn,
           aws_sns_topic.reminder_alerts.arn,
@@ -123,10 +121,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
       },
       {
         Effect = "Allow"
-        Action = [
-          "ses:SendEmail",
-          "ses:SendRawEmail"
-        ]
+        Action = ["ses:SendEmail", "ses:SendRawEmail"]
         Resource = "*"
       }
     ]
@@ -168,7 +163,6 @@ resource "aws_lambda_layer_version" "reportlab_layer" {
 # LAMBDA FUNCTIONS
 # ============================================================
 
-# --- donor_function ---
 data "archive_file" "donor_zip" {
   type        = "zip"
   source_file = "${path.module}/../backend/donor_function.py"
@@ -189,7 +183,6 @@ resource "aws_lambda_function" "donor_function" {
   lifecycle { ignore_changes = [layers] }
 }
 
-# --- request_function ---
 data "archive_file" "request_zip" {
   type        = "zip"
   source_file = "${path.module}/../backend/request_function.py"
@@ -210,7 +203,6 @@ resource "aws_lambda_function" "request_function" {
   lifecycle { ignore_changes = [layers] }
 }
 
-# --- match_function ---
 data "archive_file" "match_zip" {
   type        = "zip"
   source_file = "${path.module}/../backend/match_function.py"
@@ -234,7 +226,6 @@ resource "aws_lambda_function" "match_function" {
   lifecycle { ignore_changes = [layers] }
 }
 
-# --- history_function ---
 data "archive_file" "history_zip" {
   type        = "zip"
   source_file = "${path.module}/../backend/history_function.py"
@@ -255,7 +246,6 @@ resource "aws_lambda_function" "history_function" {
   lifecycle { ignore_changes = [layers] }
 }
 
-# --- certificate_function ---
 data "archive_file" "certificate_zip" {
   type        = "zip"
   source_file = "${path.module}/../backend/certificate_function.py"
@@ -280,7 +270,6 @@ resource "aws_lambda_function" "certificate_function" {
   lifecycle { ignore_changes = [layers] }
 }
 
-# --- reminder_function ---
 data "archive_file" "reminder_zip" {
   type        = "zip"
   source_file = "${path.module}/../backend/reminder_function.py"
@@ -304,7 +293,6 @@ resource "aws_lambda_function" "reminder_function" {
   lifecycle { ignore_changes = [layers] }
 }
 
-# --- admin_function ---
 data "archive_file" "admin_zip" {
   type        = "zip"
   source_file = "${path.module}/../backend/admin_function.py"
@@ -323,513 +311,6 @@ resource "aws_lambda_function" "admin_function" {
     variables = { REGION = var.region }
   }
   lifecycle { ignore_changes = [layers] }
-}
-
-# ============================================================
-# API GATEWAY
-# ============================================================
-
-resource "aws_api_gateway_rest_api" "bloodops_api" {
-  name        = "bloodops-api"
-  description = "BloodOps API Gateway"
-  lifecycle { ignore_changes = all }
-}
-
-# --- /donors resource ---
-resource "aws_api_gateway_resource" "donors" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
-  path_part   = "donors"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "donors_get" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.donors.id
-  http_method   = "GET"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "donors_post" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.donors.id
-  http_method   = "POST"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "donors_get_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id             = aws_api_gateway_resource.donors.id
-  http_method             = aws_api_gateway_method.donors_get.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.donor_function.invoke_arn
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "donors_post_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id             = aws_api_gateway_resource.donors.id
-  http_method             = aws_api_gateway_method.donors_post.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.donor_function.invoke_arn
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "donors_options" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.donors.id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "donors_options_integration" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.donors.id
-  http_method = aws_api_gateway_method.donors_options.http_method
-  type        = "MOCK"
-  request_templates = { "application/json" = "{\"statusCode\": 200}" }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method_response" "donors_options_200" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.donors.id
-  http_method = aws_api_gateway_method.donors_options.http_method
-  status_code = "200"
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-    "method.response.header.Access-Control-Allow-Origin"  = true
-  }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration_response" "donors_options_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.donors.id
-  http_method = aws_api_gateway_method.donors_options.http_method
-  status_code = aws_api_gateway_method_response.donors_options_200.status_code
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-  }
-  lifecycle { ignore_changes = all }
-}
-
-# --- /requests resource ---
-resource "aws_api_gateway_resource" "requests" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
-  path_part   = "requests"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "requests_get" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.requests.id
-  http_method   = "GET"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "requests_post" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.requests.id
-  http_method   = "POST"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "requests_get_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id             = aws_api_gateway_resource.requests.id
-  http_method             = aws_api_gateway_method.requests_get.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.request_function.invoke_arn
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "requests_post_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id             = aws_api_gateway_resource.requests.id
-  http_method             = aws_api_gateway_method.requests_post.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.request_function.invoke_arn
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "requests_options" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.requests.id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "requests_options_integration" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.requests.id
-  http_method = aws_api_gateway_method.requests_options.http_method
-  type        = "MOCK"
-  request_templates = { "application/json" = "{\"statusCode\": 200}" }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method_response" "requests_options_200" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.requests.id
-  http_method = aws_api_gateway_method.requests_options.http_method
-  status_code = "200"
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-    "method.response.header.Access-Control-Allow-Origin"  = true
-  }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration_response" "requests_options_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.requests.id
-  http_method = aws_api_gateway_method.requests_options.http_method
-  status_code = aws_api_gateway_method_response.requests_options_200.status_code
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-  }
-  lifecycle { ignore_changes = all }
-}
-
-# --- /match resource ---
-resource "aws_api_gateway_resource" "match" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
-  path_part   = "match"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "match_get" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.match.id
-  http_method   = "GET"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "match_get_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id             = aws_api_gateway_resource.match.id
-  http_method             = aws_api_gateway_method.match_get.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.match_function.invoke_arn
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "match_options" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.match.id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "match_options_integration" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.match.id
-  http_method = aws_api_gateway_method.match_options.http_method
-  type        = "MOCK"
-  request_templates = { "application/json" = "{\"statusCode\": 200}" }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method_response" "match_options_200" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.match.id
-  http_method = aws_api_gateway_method.match_options.http_method
-  status_code = "200"
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-    "method.response.header.Access-Control-Allow-Origin"  = true
-  }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration_response" "match_options_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.match.id
-  http_method = aws_api_gateway_method.match_options.http_method
-  status_code = aws_api_gateway_method_response.match_options_200.status_code
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-  }
-  lifecycle { ignore_changes = all }
-}
-
-# --- /history resource ---
-resource "aws_api_gateway_resource" "history" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
-  path_part   = "history"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "history_get" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.history.id
-  http_method   = "GET"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "history_post" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.history.id
-  http_method   = "POST"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "history_get_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id             = aws_api_gateway_resource.history.id
-  http_method             = aws_api_gateway_method.history_get.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.history_function.invoke_arn
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "history_post_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id             = aws_api_gateway_resource.history.id
-  http_method             = aws_api_gateway_method.history_post.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.history_function.invoke_arn
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "history_options" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.history.id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "history_options_integration" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.history.id
-  http_method = aws_api_gateway_method.history_options.http_method
-  type        = "MOCK"
-  request_templates = { "application/json" = "{\"statusCode\": 200}" }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method_response" "history_options_200" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.history.id
-  http_method = aws_api_gateway_method.history_options.http_method
-  status_code = "200"
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-    "method.response.header.Access-Control-Allow-Origin"  = true
-  }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration_response" "history_options_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.history.id
-  http_method = aws_api_gateway_method.history_options.http_method
-  status_code = aws_api_gateway_method_response.history_options_200.status_code
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-  }
-  lifecycle { ignore_changes = all }
-}
-
-# --- /certificate resource ---
-resource "aws_api_gateway_resource" "certificate" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
-  path_part   = "certificate"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "certificate_get" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.certificate.id
-  http_method   = "GET"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "certificate_get_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id             = aws_api_gateway_resource.certificate.id
-  http_method             = aws_api_gateway_method.certificate_get.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.certificate_function.invoke_arn
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "certificate_options" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.certificate.id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "certificate_options_integration" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.certificate.id
-  http_method = aws_api_gateway_method.certificate_options.http_method
-  type        = "MOCK"
-  request_templates = { "application/json" = "{\"statusCode\": 200}" }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method_response" "certificate_options_200" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.certificate.id
-  http_method = aws_api_gateway_method.certificate_options.http_method
-  status_code = "200"
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-    "method.response.header.Access-Control-Allow-Origin"  = true
-  }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration_response" "certificate_options_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.certificate.id
-  http_method = aws_api_gateway_method.certificate_options.http_method
-  status_code = aws_api_gateway_method_response.certificate_options_200.status_code
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-  }
-  lifecycle { ignore_changes = all }
-}
-
-# --- /admin resource ---
-resource "aws_api_gateway_resource" "admin" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
-  path_part   = "admin"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "admin_get" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.admin.id
-  http_method   = "GET"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "admin_get_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id             = aws_api_gateway_resource.admin.id
-  http_method             = aws_api_gateway_method.admin_get.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.admin_function.invoke_arn
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method" "admin_options" {
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id   = aws_api_gateway_resource.admin.id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration" "admin_options_integration" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.admin.id
-  http_method = aws_api_gateway_method.admin_options.http_method
-  type        = "MOCK"
-  request_templates = { "application/json" = "{\"statusCode\": 200}" }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_method_response" "admin_options_200" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.admin.id
-  http_method = aws_api_gateway_method.admin_options.http_method
-  status_code = "200"
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-    "method.response.header.Access-Control-Allow-Origin"  = true
-  }
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_integration_response" "admin_options_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-  resource_id = aws_api_gateway_resource.admin.id
-  http_method = aws_api_gateway_method.admin_options.http_method
-  status_code = aws_api_gateway_method_response.admin_options_200.status_code
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-  }
-  lifecycle { ignore_changes = all }
-}
-
-# ============================================================
-# API GATEWAY DEPLOYMENT
-# ============================================================
-
-resource "aws_api_gateway_deployment" "bloodops_deployment" {
-  rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
-
-  depends_on = [
-    aws_api_gateway_integration.donors_get_integration,
-    aws_api_gateway_integration.donors_post_integration,
-    aws_api_gateway_integration.requests_get_integration,
-    aws_api_gateway_integration.requests_post_integration,
-    aws_api_gateway_integration.match_get_integration,
-    aws_api_gateway_integration.history_get_integration,
-    aws_api_gateway_integration.history_post_integration,
-    aws_api_gateway_integration.certificate_get_integration,
-    aws_api_gateway_integration.admin_get_integration,
-  ]
-
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_api_gateway_stage" "bloodops_stage" {
-  deployment_id = aws_api_gateway_deployment.bloodops_deployment.id
-  rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
-  stage_name    = "prod"
-  lifecycle { ignore_changes = all }
 }
 
 # ============================================================
@@ -870,7 +351,6 @@ resource "aws_iam_role_policy" "eventbridge_policy" {
     ]
   })
 }
-
 
 # ============================================================
 # CLOUDWATCH ALARMS
@@ -924,11 +404,6 @@ resource "aws_cloudwatch_metric_alarm" "match_function_errors" {
 # ============================================================
 # OUTPUTS
 # ============================================================
-
-output "api_gateway_url" {
-  value       = "https://${aws_api_gateway_rest_api.bloodops_api.id}.execute-api.${var.region}.amazonaws.com/prod"
-  description = "Base URL for BloodOps API"
-}
 
 output "urgent_alerts_topic_arn" {
   value = aws_sns_topic.urgent_alerts.arn
