@@ -114,4 +114,5 @@ jobs:
         run: |
           aws s3 sync frontend/ s3://bloodops-frontend-bucket/ \
             --exclude "admin.html" \
+            --exclude "admin-secret-bloodops-2026.html" \
             --delete
