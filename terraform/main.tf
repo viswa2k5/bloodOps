@@ -854,7 +854,7 @@ resource "aws_lambda_permission" "match_api_permission" {
 }
 
 resource "aws_lambda_permission" "history_api_permission" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvokeHistory"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.history_function.function_name
   principal     = "apigateway.amazonaws.com"
