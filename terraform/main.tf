@@ -871,22 +871,6 @@ resource "aws_iam_role_policy" "eventbridge_policy" {
   })
 }
 
-resource "aws_scheduler_schedule" "daily_reminder" {
-  name = "bloodops-daily-reminder"
-
-  flexible_time_window {
-    mode = "OFF"
-  }
-
-  schedule_expression = "cron(30 3 * * ? *)"
-
-  target {
-    arn      = aws_lambda_function.reminder_function.arn
-    role_arn = aws_iam_role.eventbridge_role.arn
-  }
-
-  lifecycle { ignore_changes = all }
-}
 
 # ============================================================
 # CLOUDWATCH ALARMS
