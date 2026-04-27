@@ -82,7 +82,7 @@ jobs:
           tofu import aws_sns_topic.admin_notifications arn:aws:sns:us-east-1:065837433541:admin-notifications 2>/dev/null || true
 
           echo "Importing API Gateway..."
-          tofu import aws_api_gateway_rest_api.bloodops_api xztk3lgyvc 2>/dev/null || true
+          tofu import aws_api_gateway_rest_api.bloodops_api tt2d1k2i00 2>/dev/null || true
 
           echo "Importing EventBridge schedule..."
           tofu import aws_scheduler_schedule.daily_reminder bloodops-daily-reminder 2>/dev/null || true
