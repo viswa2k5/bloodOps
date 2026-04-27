@@ -189,12 +189,6 @@ resource "aws_lambda_function" "donor_function" {
   lifecycle { ignore_changes = [layers] }
 }
 
-resource "aws_cloudwatch_log_group" "donor_logs" {
-  name              = "/aws/lambda/bloodops-donor-function"
-  retention_in_days = 7
-  lifecycle { ignore_changes = all }
-}
-
 # --- request_function ---
 data "archive_file" "request_zip" {
   type        = "zip"
@@ -214,12 +208,6 @@ resource "aws_lambda_function" "request_function" {
     variables = { REGION = var.region }
   }
   lifecycle { ignore_changes = [layers] }
-}
-
-resource "aws_cloudwatch_log_group" "request_logs" {
-  name              = "/aws/lambda/bloodops-request-function"
-  retention_in_days = 7
-  lifecycle { ignore_changes = all }
 }
 
 # --- match_function ---
@@ -246,12 +234,6 @@ resource "aws_lambda_function" "match_function" {
   lifecycle { ignore_changes = [layers] }
 }
 
-resource "aws_cloudwatch_log_group" "match_logs" {
-  name              = "/aws/lambda/bloodops-match-function"
-  retention_in_days = 7
-  lifecycle { ignore_changes = all }
-}
-
 # --- history_function ---
 data "archive_file" "history_zip" {
   type        = "zip"
@@ -271,12 +253,6 @@ resource "aws_lambda_function" "history_function" {
     variables = { REGION = var.region }
   }
   lifecycle { ignore_changes = [layers] }
-}
-
-resource "aws_cloudwatch_log_group" "history_logs" {
-  name              = "/aws/lambda/bloodops-history-function"
-  retention_in_days = 7
-  lifecycle { ignore_changes = all }
 }
 
 # --- certificate_function ---
@@ -304,12 +280,6 @@ resource "aws_lambda_function" "certificate_function" {
   lifecycle { ignore_changes = [layers] }
 }
 
-resource "aws_cloudwatch_log_group" "certificate_logs" {
-  name              = "/aws/lambda/bloodops-certificate-function"
-  retention_in_days = 7
-  lifecycle { ignore_changes = all }
-}
-
 # --- reminder_function ---
 data "archive_file" "reminder_zip" {
   type        = "zip"
@@ -334,12 +304,6 @@ resource "aws_lambda_function" "reminder_function" {
   lifecycle { ignore_changes = [layers] }
 }
 
-resource "aws_cloudwatch_log_group" "reminder_logs" {
-  name              = "/aws/lambda/bloodops-reminder-function"
-  retention_in_days = 7
-  lifecycle { ignore_changes = all }
-}
-
 # --- admin_function ---
 data "archive_file" "admin_zip" {
   type        = "zip"
@@ -359,12 +323,6 @@ resource "aws_lambda_function" "admin_function" {
     variables = { REGION = var.region }
   }
   lifecycle { ignore_changes = [layers] }
-}
-
-resource "aws_cloudwatch_log_group" "admin_logs" {
-  name              = "/aws/lambda/bloodops-admin-function"
-  retention_in_days = 7
-  lifecycle { ignore_changes = all }
 }
 
 # ============================================================
@@ -871,64 +829,6 @@ resource "aws_api_gateway_stage" "bloodops_stage" {
   deployment_id = aws_api_gateway_deployment.bloodops_deployment.id
   rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
   stage_name    = "prod"
-  lifecycle { ignore_changes = all }
-}
-
-# ============================================================
-# LAMBDA PERMISSIONS FOR API GATEWAY
-# ============================================================
-
-resource "aws_lambda_permission" "donor_api_permission" {
-  statement_id  = "AllowAPIGatewayInvokeDonor"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.donor_function.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_lambda_permission" "request_api_permission" {
-  statement_id  = "AllowAPIGatewayInvokeRequest"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.request_function.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_lambda_permission" "match_api_permission" {
-  statement_id  = "AllowAPIGatewayInvokeMatch"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.match_function.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_lambda_permission" "history_api_permission" {
-  statement_id  = "AllowAPIGatewayInvokeHistory"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.history_function.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_lambda_permission" "certificate_api_permission" {
-  statement_id  = "AllowAPIGatewayInvokeCertificate"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.certificate_function.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
-  lifecycle { ignore_changes = all }
-}
-
-resource "aws_lambda_permission" "admin_api_permission" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.admin_function.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
   lifecycle { ignore_changes = all }
 }
 
