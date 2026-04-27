@@ -47,48 +47,6 @@ jobs:
         working-directory: terraform
         run: tofu init
 
-      - name: Import existing resources into state
-        working-directory: terraform
-        run: |
-          echo "Importing IAM roles..."
-          tofu import aws_iam_role.lambda_role bloodops-lambda-role 2>/dev/null || true
-          tofu import aws_iam_role.eventbridge_role bloodops-eventbridge-role 2>/dev/null || true
-
-          echo "Importing Lambda functions..."
-          tofu import aws_lambda_function.donor_function bloodops-donor-function 2>/dev/null || true
-          tofu import aws_lambda_function.request_function bloodops-request-function 2>/dev/null || true
-          tofu import aws_lambda_function.match_function bloodops-match-function 2>/dev/null || true
-          tofu import aws_lambda_function.history_function bloodops-history-function 2>/dev/null || true
-          tofu import aws_lambda_function.certificate_function bloodops-certificate-function 2>/dev/null || true
-          tofu import aws_lambda_function.reminder_function bloodops-reminder-function 2>/dev/null || true
-          tofu import aws_lambda_function.admin_function bloodops-admin-function 2>/dev/null || true
-
-          echo "Importing SNS topics..."
-          tofu import aws_sns_topic.urgent_alerts arn:aws:sns:us-east-1:065837433541:urgent-blood-alerts 2>/dev/null || true
-          tofu import aws_sns_topic.reminder_alerts arn:aws:sns:us-east-1:065837433541:reminder-alerts 2>/dev/null || true
-          tofu import aws_sns_topic.admin_notifications arn:aws:sns:us-east-1:065837433541:admin-notifications 2>/dev/null || true
-
-          echo "Importing API Gateway..."
-          tofu import aws_api_gateway_rest_api.bloodops_api 73g68a41r9 2>/dev/null || true
-
-          echo "Importing EventBridge schedule..."
-          tofu import aws_scheduler_schedule.daily_reminder bloodops-daily-reminder 2>/dev/null || true
-
-          echo "Importing Lambda permissions..."
-          tofu import aws_lambda_permission.donor_api_permission bloodops-donor-function/AllowAPIGatewayInvoke 2>/dev/null || true
-          tofu import aws_lambda_permission.request_api_permission bloodops-request-function/AllowAPIGatewayInvoke 2>/dev/null || true
-          tofu import aws_lambda_permission.match_api_permission bloodops-match-function/AllowAPIGatewayInvoke 2>/dev/null || true
-          tofu import aws_lambda_permission.history_api_permission bloodops-history-function/AllowAPIGatewayInvoke 2>/dev/null || true
-          tofu import aws_lambda_permission.certificate_api_permission bloodops-certificate-function/AllowAPIGatewayInvoke 2>/dev/null || true
-          tofu import aws_lambda_permission.admin_api_permission bloodops-admin-function/AllowAPIGatewayInvoke 2>/dev/null || true
-
-          echo "Importing CloudWatch alarms..."
-          tofu import aws_cloudwatch_metric_alarm.donor_function_errors bloodops-donor-function-errors 2>/dev/null || true
-          tofu import aws_cloudwatch_metric_alarm.request_function_errors bloodops-request-function-errors 2>/dev/null || true
-          tofu import aws_cloudwatch_metric_alarm.match_function_errors bloodops-match-function-errors 2>/dev/null || true
-
-          echo "All imports done!"
-
       - name: Tofu Plan
         working-directory: terraform
         run: tofu plan

@@ -823,6 +823,7 @@ resource "aws_api_gateway_stage" "bloodops_stage" {
   deployment_id = aws_api_gateway_deployment.bloodops_deployment.id
   rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
   stage_name    = "prod"
+
   lifecycle {
     ignore_changes = all
   }
@@ -857,7 +858,7 @@ resource "aws_lambda_permission" "match_api_permission" {
 }
 
 resource "aws_lambda_permission" "history_api_permission" {
-  statement_id  = "AllowAPIGatewayInvokeHistory"
+  statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.history_function.function_name
   principal     = "apigateway.amazonaws.com"
@@ -930,6 +931,7 @@ resource "aws_scheduler_schedule" "daily_reminder" {
     arn      = aws_lambda_function.reminder_function.arn
     role_arn = aws_iam_role.eventbridge_role.arn
   }
+
   lifecycle {
     ignore_changes = all
   }
