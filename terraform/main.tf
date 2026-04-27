@@ -59,6 +59,10 @@ resource "aws_iam_role" "lambda_role" {
       }
     ]
   })
+
+  lifecycle {
+    ignore_changes = [assume_role_policy]
+  }
 }
 
 resource "aws_iam_role_policy" "lambda_policy" {
@@ -116,6 +120,14 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "logs:PutLogEvents"
         ]
         Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -127,18 +139,21 @@ resource "aws_iam_role_policy" "lambda_policy" {
 
 resource "aws_sns_topic" "urgent_alerts" {
   name = "urgent-blood-alerts"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_sns_topic" "reminder_alerts" {
   name = "reminder-alerts"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_sns_topic" "admin_notifications" {
   name = "admin-notifications"
+  lifecycle { ignore_changes = all }
 }
 
 # ============================================================
-# LAMBDA LAYERS (reportlab for certificate function)
+# LAMBDA LAYERS
 # ============================================================
 
 resource "aws_lambda_layer_version" "reportlab_layer" {
@@ -146,6 +161,7 @@ resource "aws_lambda_layer_version" "reportlab_layer" {
   layer_name          = "reportlab-layer"
   compatible_runtimes = ["python3.11"]
   description         = "ReportLab library for PDF generation"
+  lifecycle { ignore_changes = all }
 }
 
 # ============================================================
@@ -167,17 +183,16 @@ resource "aws_lambda_function" "donor_function" {
   runtime          = "python3.11"
   source_code_hash = data.archive_file.donor_zip.output_base64sha256
   timeout          = 30
-
   environment {
-    variables = {
-      REGION = var.region
-    }
+    variables = { REGION = var.region }
   }
+  lifecycle { ignore_changes = [layers] }
 }
 
 resource "aws_cloudwatch_log_group" "donor_logs" {
   name              = "/aws/lambda/bloodops-donor-function"
   retention_in_days = 7
+  lifecycle { ignore_changes = all }
 }
 
 # --- request_function ---
@@ -195,17 +210,16 @@ resource "aws_lambda_function" "request_function" {
   runtime          = "python3.11"
   source_code_hash = data.archive_file.request_zip.output_base64sha256
   timeout          = 30
-
   environment {
-    variables = {
-      REGION = var.region
-    }
+    variables = { REGION = var.region }
   }
+  lifecycle { ignore_changes = [layers] }
 }
 
 resource "aws_cloudwatch_log_group" "request_logs" {
   name              = "/aws/lambda/bloodops-request-function"
   retention_in_days = 7
+  lifecycle { ignore_changes = all }
 }
 
 # --- match_function ---
@@ -223,18 +237,19 @@ resource "aws_lambda_function" "match_function" {
   runtime          = "python3.11"
   source_code_hash = data.archive_file.match_zip.output_base64sha256
   timeout          = 30
-
   environment {
     variables = {
-      REGION             = var.region
-      URGENT_ALERTS_ARN  = aws_sns_topic.urgent_alerts.arn
+      REGION            = var.region
+      URGENT_ALERTS_ARN = aws_sns_topic.urgent_alerts.arn
     }
   }
+  lifecycle { ignore_changes = [layers] }
 }
 
 resource "aws_cloudwatch_log_group" "match_logs" {
   name              = "/aws/lambda/bloodops-match-function"
   retention_in_days = 7
+  lifecycle { ignore_changes = all }
 }
 
 # --- history_function ---
@@ -252,17 +267,16 @@ resource "aws_lambda_function" "history_function" {
   runtime          = "python3.11"
   source_code_hash = data.archive_file.history_zip.output_base64sha256
   timeout          = 30
-
   environment {
-    variables = {
-      REGION = var.region
-    }
+    variables = { REGION = var.region }
   }
+  lifecycle { ignore_changes = [layers] }
 }
 
 resource "aws_cloudwatch_log_group" "history_logs" {
   name              = "/aws/lambda/bloodops-history-function"
   retention_in_days = 7
+  lifecycle { ignore_changes = all }
 }
 
 # --- certificate_function ---
@@ -281,18 +295,19 @@ resource "aws_lambda_function" "certificate_function" {
   source_code_hash = data.archive_file.certificate_zip.output_base64sha256
   timeout          = 60
   layers           = [aws_lambda_layer_version.reportlab_layer.arn]
-
   environment {
     variables = {
       REGION      = var.region
       BUCKET_NAME = var.certificates_bucket
     }
   }
+  lifecycle { ignore_changes = [layers] }
 }
 
 resource "aws_cloudwatch_log_group" "certificate_logs" {
   name              = "/aws/lambda/bloodops-certificate-function"
   retention_in_days = 7
+  lifecycle { ignore_changes = all }
 }
 
 # --- reminder_function ---
@@ -310,18 +325,19 @@ resource "aws_lambda_function" "reminder_function" {
   runtime          = "python3.11"
   source_code_hash = data.archive_file.reminder_zip.output_base64sha256
   timeout          = 60
-
   environment {
     variables = {
       REGION             = var.region
       REMINDER_TOPIC_ARN = aws_sns_topic.reminder_alerts.arn
     }
   }
+  lifecycle { ignore_changes = [layers] }
 }
 
 resource "aws_cloudwatch_log_group" "reminder_logs" {
   name              = "/aws/lambda/bloodops-reminder-function"
   retention_in_days = 7
+  lifecycle { ignore_changes = all }
 }
 
 # --- admin_function ---
@@ -339,17 +355,16 @@ resource "aws_lambda_function" "admin_function" {
   runtime          = "python3.11"
   source_code_hash = data.archive_file.admin_zip.output_base64sha256
   timeout          = 30
-
   environment {
-    variables = {
-      REGION = var.region
-    }
+    variables = { REGION = var.region }
   }
+  lifecycle { ignore_changes = [layers] }
 }
 
 resource "aws_cloudwatch_log_group" "admin_logs" {
   name              = "/aws/lambda/bloodops-admin-function"
   retention_in_days = 7
+  lifecycle { ignore_changes = all }
 }
 
 # ============================================================
@@ -359,6 +374,7 @@ resource "aws_cloudwatch_log_group" "admin_logs" {
 resource "aws_api_gateway_rest_api" "bloodops_api" {
   name        = "bloodops-api"
   description = "BloodOps API Gateway"
+  lifecycle { ignore_changes = all }
 }
 
 # --- /donors resource ---
@@ -366,6 +382,7 @@ resource "aws_api_gateway_resource" "donors" {
   rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
   parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
   path_part   = "donors"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method" "donors_get" {
@@ -373,6 +390,7 @@ resource "aws_api_gateway_method" "donors_get" {
   resource_id   = aws_api_gateway_resource.donors.id
   http_method   = "GET"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method" "donors_post" {
@@ -380,6 +398,7 @@ resource "aws_api_gateway_method" "donors_post" {
   resource_id   = aws_api_gateway_resource.donors.id
   http_method   = "POST"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "donors_get_integration" {
@@ -389,6 +408,7 @@ resource "aws_api_gateway_integration" "donors_get_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.donor_function.invoke_arn
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "donors_post_integration" {
@@ -398,14 +418,15 @@ resource "aws_api_gateway_integration" "donors_post_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.donor_function.invoke_arn
+  lifecycle { ignore_changes = all }
 }
 
-# CORS for /donors
 resource "aws_api_gateway_method" "donors_options" {
   rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
   resource_id   = aws_api_gateway_resource.donors.id
   http_method   = "OPTIONS"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "donors_options_integration" {
@@ -413,9 +434,8 @@ resource "aws_api_gateway_integration" "donors_options_integration" {
   resource_id = aws_api_gateway_resource.donors.id
   http_method = aws_api_gateway_method.donors_options.http_method
   type        = "MOCK"
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method_response" "donors_options_200" {
@@ -428,6 +448,7 @@ resource "aws_api_gateway_method_response" "donors_options_200" {
     "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration_response" "donors_options_integration_response" {
@@ -440,6 +461,7 @@ resource "aws_api_gateway_integration_response" "donors_options_integration_resp
     "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
+  lifecycle { ignore_changes = all }
 }
 
 # --- /requests resource ---
@@ -447,6 +469,7 @@ resource "aws_api_gateway_resource" "requests" {
   rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
   parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
   path_part   = "requests"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method" "requests_get" {
@@ -454,6 +477,7 @@ resource "aws_api_gateway_method" "requests_get" {
   resource_id   = aws_api_gateway_resource.requests.id
   http_method   = "GET"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method" "requests_post" {
@@ -461,6 +485,7 @@ resource "aws_api_gateway_method" "requests_post" {
   resource_id   = aws_api_gateway_resource.requests.id
   http_method   = "POST"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "requests_get_integration" {
@@ -470,6 +495,7 @@ resource "aws_api_gateway_integration" "requests_get_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.request_function.invoke_arn
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "requests_post_integration" {
@@ -479,14 +505,15 @@ resource "aws_api_gateway_integration" "requests_post_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.request_function.invoke_arn
+  lifecycle { ignore_changes = all }
 }
 
-# CORS for /requests
 resource "aws_api_gateway_method" "requests_options" {
   rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
   resource_id   = aws_api_gateway_resource.requests.id
   http_method   = "OPTIONS"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "requests_options_integration" {
@@ -494,9 +521,8 @@ resource "aws_api_gateway_integration" "requests_options_integration" {
   resource_id = aws_api_gateway_resource.requests.id
   http_method = aws_api_gateway_method.requests_options.http_method
   type        = "MOCK"
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method_response" "requests_options_200" {
@@ -509,6 +535,7 @@ resource "aws_api_gateway_method_response" "requests_options_200" {
     "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration_response" "requests_options_integration_response" {
@@ -521,6 +548,7 @@ resource "aws_api_gateway_integration_response" "requests_options_integration_re
     "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
+  lifecycle { ignore_changes = all }
 }
 
 # --- /match resource ---
@@ -528,6 +556,7 @@ resource "aws_api_gateway_resource" "match" {
   rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
   parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
   path_part   = "match"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method" "match_get" {
@@ -535,6 +564,7 @@ resource "aws_api_gateway_method" "match_get" {
   resource_id   = aws_api_gateway_resource.match.id
   http_method   = "GET"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "match_get_integration" {
@@ -544,14 +574,15 @@ resource "aws_api_gateway_integration" "match_get_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.match_function.invoke_arn
+  lifecycle { ignore_changes = all }
 }
 
-# CORS for /match
 resource "aws_api_gateway_method" "match_options" {
   rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
   resource_id   = aws_api_gateway_resource.match.id
   http_method   = "OPTIONS"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "match_options_integration" {
@@ -559,9 +590,8 @@ resource "aws_api_gateway_integration" "match_options_integration" {
   resource_id = aws_api_gateway_resource.match.id
   http_method = aws_api_gateway_method.match_options.http_method
   type        = "MOCK"
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method_response" "match_options_200" {
@@ -574,6 +604,7 @@ resource "aws_api_gateway_method_response" "match_options_200" {
     "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration_response" "match_options_integration_response" {
@@ -586,6 +617,7 @@ resource "aws_api_gateway_integration_response" "match_options_integration_respo
     "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
+  lifecycle { ignore_changes = all }
 }
 
 # --- /history resource ---
@@ -593,6 +625,7 @@ resource "aws_api_gateway_resource" "history" {
   rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
   parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
   path_part   = "history"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method" "history_get" {
@@ -600,6 +633,7 @@ resource "aws_api_gateway_method" "history_get" {
   resource_id   = aws_api_gateway_resource.history.id
   http_method   = "GET"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method" "history_post" {
@@ -607,6 +641,7 @@ resource "aws_api_gateway_method" "history_post" {
   resource_id   = aws_api_gateway_resource.history.id
   http_method   = "POST"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "history_get_integration" {
@@ -616,6 +651,7 @@ resource "aws_api_gateway_integration" "history_get_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.history_function.invoke_arn
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "history_post_integration" {
@@ -625,14 +661,15 @@ resource "aws_api_gateway_integration" "history_post_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.history_function.invoke_arn
+  lifecycle { ignore_changes = all }
 }
 
-# CORS for /history
 resource "aws_api_gateway_method" "history_options" {
   rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
   resource_id   = aws_api_gateway_resource.history.id
   http_method   = "OPTIONS"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "history_options_integration" {
@@ -640,9 +677,8 @@ resource "aws_api_gateway_integration" "history_options_integration" {
   resource_id = aws_api_gateway_resource.history.id
   http_method = aws_api_gateway_method.history_options.http_method
   type        = "MOCK"
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method_response" "history_options_200" {
@@ -655,6 +691,7 @@ resource "aws_api_gateway_method_response" "history_options_200" {
     "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration_response" "history_options_integration_response" {
@@ -667,6 +704,7 @@ resource "aws_api_gateway_integration_response" "history_options_integration_res
     "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
+  lifecycle { ignore_changes = all }
 }
 
 # --- /certificate resource ---
@@ -674,6 +712,7 @@ resource "aws_api_gateway_resource" "certificate" {
   rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
   parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
   path_part   = "certificate"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method" "certificate_get" {
@@ -681,6 +720,7 @@ resource "aws_api_gateway_method" "certificate_get" {
   resource_id   = aws_api_gateway_resource.certificate.id
   http_method   = "GET"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "certificate_get_integration" {
@@ -690,14 +730,15 @@ resource "aws_api_gateway_integration" "certificate_get_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.certificate_function.invoke_arn
+  lifecycle { ignore_changes = all }
 }
 
-# CORS for /certificate
 resource "aws_api_gateway_method" "certificate_options" {
   rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
   resource_id   = aws_api_gateway_resource.certificate.id
   http_method   = "OPTIONS"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "certificate_options_integration" {
@@ -705,9 +746,8 @@ resource "aws_api_gateway_integration" "certificate_options_integration" {
   resource_id = aws_api_gateway_resource.certificate.id
   http_method = aws_api_gateway_method.certificate_options.http_method
   type        = "MOCK"
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method_response" "certificate_options_200" {
@@ -720,6 +760,7 @@ resource "aws_api_gateway_method_response" "certificate_options_200" {
     "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration_response" "certificate_options_integration_response" {
@@ -732,6 +773,7 @@ resource "aws_api_gateway_integration_response" "certificate_options_integration
     "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
+  lifecycle { ignore_changes = all }
 }
 
 # --- /admin resource ---
@@ -739,6 +781,7 @@ resource "aws_api_gateway_resource" "admin" {
   rest_api_id = aws_api_gateway_rest_api.bloodops_api.id
   parent_id   = aws_api_gateway_rest_api.bloodops_api.root_resource_id
   path_part   = "admin"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method" "admin_get" {
@@ -746,6 +789,7 @@ resource "aws_api_gateway_method" "admin_get" {
   resource_id   = aws_api_gateway_resource.admin.id
   http_method   = "GET"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "admin_get_integration" {
@@ -755,14 +799,15 @@ resource "aws_api_gateway_integration" "admin_get_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.admin_function.invoke_arn
+  lifecycle { ignore_changes = all }
 }
 
-# CORS for /admin
 resource "aws_api_gateway_method" "admin_options" {
   rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
   resource_id   = aws_api_gateway_resource.admin.id
   http_method   = "OPTIONS"
   authorization = "NONE"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration" "admin_options_integration" {
@@ -770,9 +815,8 @@ resource "aws_api_gateway_integration" "admin_options_integration" {
   resource_id = aws_api_gateway_resource.admin.id
   http_method = aws_api_gateway_method.admin_options.http_method
   type        = "MOCK"
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_method_response" "admin_options_200" {
@@ -785,6 +829,7 @@ resource "aws_api_gateway_method_response" "admin_options_200" {
     "method.response.header.Access-Control-Allow-Methods" = true
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_integration_response" "admin_options_integration_response" {
@@ -797,6 +842,7 @@ resource "aws_api_gateway_integration_response" "admin_options_integration_respo
     "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
+  lifecycle { ignore_changes = all }
 }
 
 # ============================================================
@@ -817,16 +863,15 @@ resource "aws_api_gateway_deployment" "bloodops_deployment" {
     aws_api_gateway_integration.certificate_get_integration,
     aws_api_gateway_integration.admin_get_integration,
   ]
+
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_api_gateway_stage" "bloodops_stage" {
   deployment_id = aws_api_gateway_deployment.bloodops_deployment.id
   rest_api_id   = aws_api_gateway_rest_api.bloodops_api.id
   stage_name    = "prod"
-
-  lifecycle {
-    ignore_changes = all
-  }
+  lifecycle { ignore_changes = all }
 }
 
 # ============================================================
@@ -834,55 +879,61 @@ resource "aws_api_gateway_stage" "bloodops_stage" {
 # ============================================================
 
 resource "aws_lambda_permission" "donor_api_permission" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvokeDonor"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.donor_function.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_lambda_permission" "request_api_permission" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvokeRequest"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.request_function.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_lambda_permission" "match_api_permission" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvokeMatch"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.match_function.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_lambda_permission" "history_api_permission" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvokeHistory"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.history_function.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_lambda_permission" "certificate_api_permission" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvokeCertificate"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.certificate_function.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_lambda_permission" "admin_api_permission" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvokeAdmin"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.admin_function.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.bloodops_api.execution_arn}/*/*"
+  lifecycle { ignore_changes = all }
 }
 
 # ============================================================
-# EVENTBRIDGE SCHEDULER — Daily Reminder at 9AM IST
+# EVENTBRIDGE SCHEDULER
 # ============================================================
 
 resource "aws_iam_role" "eventbridge_role" {
@@ -900,6 +951,8 @@ resource "aws_iam_role" "eventbridge_role" {
       }
     ]
   })
+
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_iam_role_policy" "eventbridge_policy" {
@@ -932,9 +985,7 @@ resource "aws_scheduler_schedule" "daily_reminder" {
     role_arn = aws_iam_role.eventbridge_role.arn
   }
 
-  lifecycle {
-    ignore_changes = all
-  }
+  lifecycle { ignore_changes = all }
 }
 
 # ============================================================
@@ -951,12 +1002,9 @@ resource "aws_cloudwatch_metric_alarm" "donor_function_errors" {
   statistic           = "Sum"
   threshold           = "5"
   alarm_description   = "Donor function error rate too high"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.donor_function.function_name
-  }
-
-  alarm_actions = [aws_sns_topic.admin_notifications.arn]
+  dimensions          = { FunctionName = aws_lambda_function.donor_function.function_name }
+  alarm_actions       = [aws_sns_topic.admin_notifications.arn]
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_cloudwatch_metric_alarm" "request_function_errors" {
@@ -969,12 +1017,9 @@ resource "aws_cloudwatch_metric_alarm" "request_function_errors" {
   statistic           = "Sum"
   threshold           = "5"
   alarm_description   = "Request function error rate too high"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.request_function.function_name
-  }
-
-  alarm_actions = [aws_sns_topic.admin_notifications.arn]
+  dimensions          = { FunctionName = aws_lambda_function.request_function.function_name }
+  alarm_actions       = [aws_sns_topic.admin_notifications.arn]
+  lifecycle { ignore_changes = all }
 }
 
 resource "aws_cloudwatch_metric_alarm" "match_function_errors" {
@@ -987,12 +1032,9 @@ resource "aws_cloudwatch_metric_alarm" "match_function_errors" {
   statistic           = "Sum"
   threshold           = "5"
   alarm_description   = "Match function error rate too high"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.match_function.function_name
-  }
-
-  alarm_actions = [aws_sns_topic.admin_notifications.arn]
+  dimensions          = { FunctionName = aws_lambda_function.match_function.function_name }
+  alarm_actions       = [aws_sns_topic.admin_notifications.arn]
+  lifecycle { ignore_changes = all }
 }
 
 # ============================================================
@@ -1001,7 +1043,7 @@ resource "aws_cloudwatch_metric_alarm" "match_function_errors" {
 
 output "api_gateway_url" {
   value       = "https://${aws_api_gateway_rest_api.bloodops_api.id}.execute-api.${var.region}.amazonaws.com/prod"
-  description = "Base URL for BloodOps API - paste this into your frontend and admin HTML files"
+  description = "Base URL for BloodOps API"
 }
 
 output "urgent_alerts_topic_arn" {
