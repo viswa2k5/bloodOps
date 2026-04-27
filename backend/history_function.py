@@ -38,9 +38,10 @@ def add_history(event):
     }
     table.put_item(Item=item)
 
-    # Update request status to completed if request_id provided
+    # Update request status to completed
     request_id = body.get('request_id', '')
     if request_id:
+        # If request_id provided, update directly
         try:
             requests_table.update_item(
                 Key={'RequestID': request_id},
@@ -48,6 +49,28 @@ def add_history(event):
                 ExpressionAttributeNames={'#s': 'Status'},
                 ExpressionAttributeValues={':s': 'completed'}
             )
+        except Exception:
+            pass
+    else:
+        # Auto-find matching pending request by hospital name
+        try:
+            result = requests_table.scan(
+                FilterExpression='#s = :s AND HospitalName = :h',
+                ExpressionAttributeNames={'#s': 'Status'},
+                ExpressionAttributeValues={
+                    ':s': 'pending',
+                    ':h': body['hospital_name']
+                }
+            )
+            if result['Items']:
+                # Mark the most recent pending request as completed
+                latest = sorted(result['Items'], key=lambda x: x.get('Timestamp', ''), reverse=True)[0]
+                requests_table.update_item(
+                    Key={'RequestID': latest['RequestID']},
+                    UpdateExpression='SET #s = :s',
+                    ExpressionAttributeNames={'#s': 'Status'},
+                    ExpressionAttributeValues={':s': 'completed'}
+                )
         except Exception:
             pass
 
