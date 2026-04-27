@@ -476,7 +476,7 @@
   <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 
   <script>
-    const API_URL = 'https://pov9qy4ue5.execute-api.us-east-1.amazonaws.com/prod';
+    const API_URL = 'https://73g68a41r9.execute-api.us-east-1.amazonaws.com/prod';
     const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
     const bloodTypeEls = {
@@ -664,7 +664,11 @@
         }
         tbody.innerHTML = history.map(h => {
           const certUrl = h.CertificateURL ?? h.certificate_url ?? h.certificateUrl ?? '';
-          const certCell = certUrl ? `<a href="${certUrl}" target="_blank" rel="noopener">Download PDF</a>` : '<span style="opacity:0.5">Not generated</span>';
+          const histId = h.HistoryID ?? h.history_id ?? '';
+          const donorId = h.DonorID ?? h.donor_id ?? '';
+          const certCell = certUrl
+            ? `<a href="${certUrl}" target="_blank" rel="noopener">Download PDF</a>`
+            : `<button onclick="adminGenerateCert('${histId}','${donorId}')" style="background:linear-gradient(135deg,#ff475f,#b51738);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600;">Generate PDF</button>`;
           return `<tr>
             <td>${shortId(h.HistoryID ?? h.history_id)}</td>
             <td>${shortId(h.DonorID ?? h.donor_id)}</td>
@@ -704,7 +708,8 @@
           body: JSON.stringify({
             donor_id: donorId,
             hospital_name: hospitalName,
-            donation_date: date || new Date().toISOString()
+            donation_date: date || new Date().toISOString(),
+            request_id: document.getElementById('recordRequestId').value.trim()
           })
         });
         if (!res.ok) throw new Error('Failed to record donation.');
@@ -720,6 +725,21 @@
       } finally {
         btn.disabled = false;
         btn.textContent = 'Record Donation';
+      }
+    }
+
+    // GENERATE CERTIFICATE FROM ADMIN
+    async function adminGenerateCert(historyId, donorId) {
+      try {
+        const res = await fetch(`${API_URL}/certificate?donor_id=${encodeURIComponent(donorId)}&history_id=${encodeURIComponent(historyId)}`);
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        if (data.certificate_url) {
+          window.open(data.certificate_url, '_blank');
+          setTimeout(() => fetchHistory(), 1500);
+        }
+      } catch (err) {
+        alert('Failed to generate certificate. Please try again.');
       }
     }
 

@@ -6,6 +6,7 @@ from decimal import Decimal
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('DonationHistory')
+requests_table = dynamodb.Table('Requests')
 
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -36,6 +37,20 @@ def add_history(event):
         'CertificateURL': body.get('certificate_url', '')
     }
     table.put_item(Item=item)
+
+    # Update request status to completed if request_id provided
+    request_id = body.get('request_id', '')
+    if request_id:
+        try:
+            requests_table.update_item(
+                Key={'RequestID': request_id},
+                UpdateExpression='SET #s = :s',
+                ExpressionAttributeNames={'#s': 'Status'},
+                ExpressionAttributeValues={':s': 'completed'}
+            )
+        except Exception:
+            pass
+
     return response(201, {'message': 'History added successfully', 'HistoryID': history_id})
 
 def get_history(event):

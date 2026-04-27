@@ -667,7 +667,7 @@
   </div>
 
   <script>
-    const API_URL ='https://pov9qy4ue5.execute-api.us-east-1.amazonaws.com/prod';
+    const API_URL = 'YOUR_API_GATEWAY_URL';
     const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
     // THEME
@@ -866,7 +866,10 @@
           const date = item.date ?? item.DonationDate ?? item.donation_date ?? '-';
           const hospital = item.HospitalName ?? item.hospital_name ?? item.hospital ?? '-';
           const certUrl = item.CertificateURL ?? item.certificate_url ?? item.certificateUrl ?? '';
-          const certCell = certUrl ? `<a href="${certUrl}" target="_blank" rel="noopener">Download</a>` : 'Not generated';
+          const histId = item.HistoryID ?? item.history_id ?? '';
+          const certCell = certUrl
+            ? `<a href="${certUrl}" target="_blank" rel="noopener">⬇ Download</a>`
+            : `<button onclick="generateCert('${histId}','${donorId}')" style="background:linear-gradient(135deg,#ff475f,#b51738);border:none;color:white;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600;">Generate PDF</button>`;
           return `<tr><td>${date}</td><td>${hospital}</td><td>${certCell}</td></tr>`;
         }).join('');
         wrap.style.display = 'block';
@@ -926,6 +929,21 @@
         setMessage(msg, 'Matching donors loaded.', 'success');
       } catch (err) { setMessage(msg, err.message || 'Error finding donors.', 'error'); }
     });
+
+    // GENERATE CERTIFICATE
+    async function generateCert(historyId, donorId) {
+      try {
+        const res = await fetch(`${API_URL}/certificate?donor_id=${encodeURIComponent(donorId)}&history_id=${encodeURIComponent(historyId)}`);
+        if (!res.ok) throw new Error('Failed to generate certificate.');
+        const data = await res.json();
+        if (data.certificate_url) {
+          window.open(data.certificate_url, '_blank');
+          setTimeout(() => document.getElementById('historySearchBtn').click(), 1500);
+        }
+      } catch (err) {
+        alert('Failed to generate certificate. Please try again.');
+      }
+    }
 
     // FAQ
     document.querySelectorAll('.faq-q').forEach(btn => {
