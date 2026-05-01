@@ -4,11 +4,6 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-# ============================================================
-# HISTORY FUNCTION
-# Records donation history and auto-updates donor availability
-# ============================================================
-
 dynamodb = boto3.resource('dynamodb')
 
 history_table = dynamodb.Table('DonationHistory')
@@ -37,21 +32,18 @@ def response(status_code, body):
 def lambda_handler(event, context):
     try:
         method = event['httpMethod']
-
         if method == 'POST':
             return add_history(event)
         elif method == 'GET':
             return get_history(event)
         else:
             return response(405, {'message': 'Method not allowed'})
-
     except Exception as e:
         return response(500, {'message': str(e)})
 
 
 def add_history(event):
     body = json.loads(event['body'])
-
     history_id = str(uuid.uuid4())
 
     item = {
@@ -61,10 +53,9 @@ def add_history(event):
         'HospitalName': body['hospital_name'],
         'CertificateURL': body.get('certificate_url', '')
     }
-
     history_table.put_item(Item=item)
 
-    # ── Auto-update donor availability to Unavailable ──
+    # Auto-update donor availability to Unavailable
     try:
         donors_table.update_item(
             Key={'DonorID': body['donor_id']},
@@ -77,16 +68,39 @@ def add_history(event):
     except Exception:
         pass
 
-    # ── Auto-update request status to matched if request_id provided ──
+    # Auto-update request status to completed
     try:
         request_id = body.get('request_id', '')
         if request_id:
+            # If request_id provided update directly
             requests_table.update_item(
                 Key={'RequestID': request_id},
                 UpdateExpression='SET #s = :s',
                 ExpressionAttributeNames={'#s': 'Status'},
-                ExpressionAttributeValues={':s': 'matched'}
+                ExpressionAttributeValues={':s': 'completed'}
             )
+        else:
+            # Auto-find most recent pending request by hospital name
+            result = requests_table.scan(
+                FilterExpression='#s = :s AND HospitalName = :h',
+                ExpressionAttributeNames={'#s': 'Status'},
+                ExpressionAttributeValues={
+                    ':s': 'pending',
+                    ':h': body['hospital_name']
+                }
+            )
+            if result['Items']:
+                latest = sorted(
+                    result['Items'],
+                    key=lambda x: x.get('Timestamp', ''),
+                    reverse=True
+                )[0]
+                requests_table.update_item(
+                    Key={'RequestID': latest['RequestID']},
+                    UpdateExpression='SET #s = :s',
+                    ExpressionAttributeNames={'#s': 'Status'},
+                    ExpressionAttributeValues={':s': 'completed'}
+                )
     except Exception:
         pass
 
@@ -99,7 +113,6 @@ def add_history(event):
 def get_history(event):
     params = event.get('queryStringParameters') or {}
     donor_id = params.get('donor_id')
-
     if donor_id:
         result = history_table.scan(
             FilterExpression='DonorID = :d',
@@ -107,5 +120,4 @@ def get_history(event):
         )
     else:
         result = history_table.scan()
-
     return response(200, result['Items'])

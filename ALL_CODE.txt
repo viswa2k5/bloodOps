@@ -1,0 +1,4097 @@
+
+
+==================== backend/admin_function.py ====================
+
+import json
+import boto3
+from collections import Counter
+from decimal import Decimal
+
+dynamodb = boto3.resource('dynamodb')
+donors_table = dynamodb.Table('Donors')
+requests_table = dynamodb.Table('Requests')
+history_table = dynamodb.Table('DonationHistory')
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
+
+def lambda_handler(event, context):
+    try:
+        donors = donors_table.scan()['Items']
+        requests = requests_table.scan()['Items']
+        history = history_table.scan()['Items']
+        blood_type_counts = Counter(d['BloodType'] for d in donors)
+        pending_requests = [r for r in requests if r.get('Status') == 'pending']
+        matched_requests = [r for r in requests if r.get('Status') == 'matched']
+        dashboard = {
+            'total_donors': len(donors),
+            'total_requests': len(requests),
+            'total_donations': len(history),
+            'blood_type_availability': dict(blood_type_counts),
+            'pending_requests': pending_requests,
+            'matched_requests': matched_requests
+        }
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps(dashboard, cls=DecimalEncoder)
+        }
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'message': str(e)})
+        }
+
+==================== backend/certificate_function.py ====================
+
+import json
+import boto3
+import os
+from datetime import datetime
+from decimal import Decimal
+
+# ============================================================
+# CERTIFICATE FUNCTION
+# Generates a premium PDF donation certificate using ReportLab
+# ============================================================
+
+dynamodb = boto3.resource('dynamodb')
+s3 = boto3.client('s3')
+
+BUCKET_NAME = os.environ.get('BUCKET_NAME', 'bloodops-certificates-bucket')
+REGION = os.environ.get('REGION', 'us-east-1')
+
+donors_table = dynamodb.Table('Donors')
+history_table = dynamodb.Table('DonationHistory')
+
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
+
+
+def response(status_code, body):
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        },
+        'body': json.dumps(body, cls=DecimalEncoder)
+    }
+
+
+def generate_certificate_pdf(donor_name, blood_type, donation_date, hospital_name, donor_id):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.pdfgen import canvas
+    import io
+
+    buffer = io.BytesIO()
+    width, height = A4  # 595 x 842 pts
+
+    c = canvas.Canvas(buffer, pagesize=A4)
+
+    # ── BACKGROUND ──
+    c.setFillColor(colors.HexColor('#fffaf9'))
+    c.rect(0, 0, width, height, fill=1, stroke=0)
+
+    # ── OUTER BORDER (thick dark red) ──
+    c.setStrokeColor(colors.HexColor('#8B0000'))
+    c.setLineWidth(6)
+    c.rect(18, 18, width - 36, height - 36, fill=0, stroke=1)
+
+    # ── INNER BORDER (thin) ──
+    c.setStrokeColor(colors.HexColor('#cc3333'))
+    c.setLineWidth(1.5)
+    c.rect(28, 28, width - 56, height - 56, fill=0, stroke=1)
+
+    # ── CORNER DIAMOND ORNAMENTS ──
+    def diamond(cx, cy, size=7):
+        c.setFillColor(colors.HexColor('#8B0000'))
+        p = c.beginPath()
+        p.moveTo(cx, cy + size)
+        p.lineTo(cx + size, cy)
+        p.lineTo(cx, cy - size)
+        p.lineTo(cx - size, cy)
+        p.close()
+        c.drawPath(p, fill=1, stroke=0)
+
+    diamond(22, 22)
+    diamond(width - 22, 22)
+    diamond(22, height - 22)
+    diamond(width - 22, height - 22)
+
+    # ── TOP HEADER BAND ──
+    c.setFillColor(colors.HexColor('#8B0000'))
+    c.rect(28, height - 112, width - 56, 72, fill=1, stroke=0)
+
+    # Dot decorations in band
+    c.setFillColor(colors.HexColor('#ffffff'))
+    for x in [55, 72, 89, width - 55, width - 72, width - 89]:
+        c.circle(x, height - 76, 3, fill=1, stroke=0)
+
+    # BloodOps name
+    c.setFillColor(colors.white)
+    c.setFont('Helvetica-Bold', 13)
+    c.drawCentredString(width / 2, height - 60, 'B L O O D O P S')
+    c.setFont('Helvetica', 8)
+    c.setFillColor(colors.HexColor('#ffcccc'))
+    c.drawCentredString(width / 2, height - 75, 'Serverless Blood Bank Management System')
+
+    # ── CERTIFICATE TITLE ──
+    c.setFillColor(colors.HexColor('#8B0000'))
+    c.setFont('Helvetica-Bold', 24)
+    c.drawCentredString(width / 2, height - 150, 'CERTIFICATE OF APPRECIATION')
+
+    c.setFillColor(colors.HexColor('#cc3333'))
+    c.setFont('Helvetica', 10)
+    c.drawCentredString(width / 2, height - 168, 'IN RECOGNITION OF A NOBLE ACT OF BLOOD DONATION')
+
+    # ── ORNAMENTAL DIVIDER ──
+    c.setStrokeColor(colors.HexColor('#cc3333'))
+    c.setLineWidth(1)
+    c.line(80, height - 182, width - 80, height - 182)
+    c.setFillColor(colors.HexColor('#8B0000'))
+    c.circle(width / 2, height - 182, 4, fill=1, stroke=0)
+    c.circle(width / 2 - 28, height - 182, 2, fill=1, stroke=0)
+    c.circle(width / 2 + 28, height - 182, 2, fill=1, stroke=0)
+
+    # ── PRESENTED TO ──
+    c.setFillColor(colors.HexColor('#555555'))
+    c.setFont('Helvetica', 11)
+    c.drawCentredString(width / 2, height - 210, 'This certificate is proudly presented to')
+
+    # ── DONOR NAME ──
+    c.setFillColor(colors.HexColor('#8B0000'))
+    c.setFont('Helvetica-Bold', 28)
+    c.drawCentredString(width / 2, height - 248, donor_name.upper())
+
+    # Name underline
+    nw = c.stringWidth(donor_name.upper(), 'Helvetica-Bold', 28)
+    c.setStrokeColor(colors.HexColor('#cc3333'))
+    c.setLineWidth(1.5)
+    c.line(width / 2 - nw / 2, height - 256, width / 2 + nw / 2, height - 256)
+
+    # ── CITATION ──
+    c.setFillColor(colors.HexColor('#333333'))
+    c.setFont('Helvetica', 10)
+    c.drawCentredString(width / 2, height - 276,
+                        'for their selfless act of donating blood and contributing to saving precious human lives.')
+
+    # ── DETAILS BOX ──
+    bx, by, bw, bh = 60, height - 400, width - 120, 100
+    c.setFillColor(colors.HexColor('#fff0f0'))
+    c.setStrokeColor(colors.HexColor('#ffaaaa'))
+    c.setLineWidth(1)
+    c.roundRect(bx, by, bw, bh, 8, fill=1, stroke=1)
+
+    details = [
+        ('BLOOD TYPE', blood_type),
+        ('DONATION DATE', donation_date),
+        ('HOSPITAL / CENTRE', hospital_name[:40]),
+        ('DONOR ID', donor_id),
+    ]
+    col1 = bx + 20
+    col2 = bx + 160
+    row_start = by + bh - 20
+    for i, (label, value) in enumerate(details):
+        ry = row_start - i * 22
+        c.setFillColor(colors.HexColor('#cc3333'))
+        c.circle(col2 - 12, ry + 3, 2, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor('#888888'))
+        c.setFont('Helvetica', 8)
+        c.drawString(col1, ry, label)
+        c.setFillColor(colors.HexColor('#1a0005'))
+        c.setFont('Helvetica-Bold', 10)
+        c.drawString(col2, ry, str(value))
+
+    # ── HEROIC QUOTE BOX ──
+    qy = height - 452
+    c.setFillColor(colors.HexColor('#8B0000'))
+    c.roundRect(60, qy, width - 120, 40, 6, fill=1, stroke=0)
+    c.setFillColor(colors.white)
+    c.setFont('Helvetica-BoldOblique', 10)
+    c.drawCentredString(width / 2, qy + 26,
+                        '"The blood you donate gives someone another chance at life.')
+    c.drawCentredString(width / 2, qy + 12,
+                        'One day, that someone may be a person you love."')
+
+    # ── IMPACT LINE ──
+    c.setFillColor(colors.HexColor('#555555'))
+    c.setFont('Helvetica', 10)
+    c.drawCentredString(width / 2, height - 472,
+                        'Your single donation has the potential to save up to 3 lives.')
+
+    # ── SIGNATURE SECTION ──
+    sy = height - 570
+
+    # Left signature line
+    c.setStrokeColor(colors.HexColor('#aaaaaa'))
+    c.setLineWidth(1)
+    c.line(75, sy, 215, sy)
+    c.setFillColor(colors.HexColor('#333333'))
+    c.setFont('Helvetica-Bold', 9)
+    c.drawCentredString(145, sy - 13, 'Authorised Signatory')
+    c.setFillColor(colors.HexColor('#888888'))
+    c.setFont('Helvetica', 8)
+    c.drawCentredString(145, sy - 24, 'BloodOps Administration')
+
+    # Right signature line
+    c.line(width - 215, sy, width - 75, sy)
+    c.setFillColor(colors.HexColor('#333333'))
+    c.setFont('Helvetica-Bold', 9)
+    c.drawCentredString(width - 145, sy - 13, 'Medical Officer')
+    c.setFillColor(colors.HexColor('#888888'))
+    c.setFont('Helvetica', 8)
+    c.drawCentredString(width - 145, sy - 24, hospital_name[:25])
+
+    # ── OFFICIAL SEAL (center) ──
+    sx, sy2 = width / 2, sy - 8
+    c.setStrokeColor(colors.HexColor('#8B0000'))
+    c.setFillColor(colors.HexColor('#fff0f0'))
+    c.setLineWidth(2)
+    c.circle(sx, sy2, 34, fill=1, stroke=1)
+    c.setStrokeColor(colors.HexColor('#cc3333'))
+    c.setLineWidth(1)
+    c.circle(sx, sy2, 28, fill=0, stroke=1)
+    c.setFillColor(colors.HexColor('#8B0000'))
+    c.setFont('Helvetica-Bold', 7)
+    c.drawCentredString(sx, sy2 + 10, 'BLOODOPS')
+    c.setFont('Helvetica', 6)
+    c.drawCentredString(sx, sy2 + 2, 'OFFICIAL SEAL')
+    c.setFont('Helvetica-Bold', 16)
+    c.drawCentredString(sx, sy2 - 12, blood_type)
+
+    # ── BOTTOM BAND ──
+    c.setFillColor(colors.HexColor('#8B0000'))
+    c.rect(28, 28, width - 56, 44, fill=1, stroke=0)
+
+    issue_date = datetime.now().strftime('%B %d, %Y at %I:%M %p UTC')
+    c.setFillColor(colors.HexColor('#ffcccc'))
+    c.setFont('Helvetica', 7)
+    c.drawCentredString(width / 2, 54,
+                        f'Certificate ID: BLOODOPS-{donor_id[:8].upper()}  |  Issued: {issue_date}')
+    c.setFillColor(colors.white)
+    c.setFont('Helvetica-Bold', 8)
+    c.drawCentredString(width / 2, 40,
+                        'Every drop counts. Every second matters.  —  BloodOps')
+
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+
+def lambda_handler(event, context):
+    try:
+        params = event.get('queryStringParameters') or {}
+        donor_id = params.get('donor_id')
+        history_id = params.get('history_id')
+
+        if not donor_id:
+            return response(400, {'message': 'donor_id is required'})
+
+        # Get donor details
+        donor_result = donors_table.get_item(Key={'DonorID': donor_id})
+        if 'Item' not in donor_result:
+            return response(404, {'message': 'Donor not found'})
+
+        donor = donor_result['Item']
+        donor_name = donor.get('Name', 'Unknown Donor')
+        blood_type = donor.get('BloodType', 'Unknown')
+
+        # Get history details if history_id provided
+        hospital_name = 'BloodOps Donation Centre'
+        donation_date = datetime.now().strftime('%B %d, %Y')
+
+        if history_id:
+            history_result = history_table.get_item(Key={'HistoryID': history_id})
+            if 'Item' in history_result:
+                history = history_result['Item']
+                hospital_name = history.get('HospitalName', hospital_name)
+                raw_date = history.get('DonationDate', '')
+                if raw_date:
+                    try:
+                        dt = datetime.fromisoformat(raw_date[:10])
+                        donation_date = dt.strftime('%B %d, %Y')
+                    except Exception:
+                        donation_date = raw_date[:10]
+
+        # Generate PDF
+        pdf_buffer = generate_certificate_pdf(
+            donor_name=donor_name,
+            blood_type=blood_type,
+            donation_date=donation_date,
+            hospital_name=hospital_name,
+            donor_id=donor_id
+        )
+
+        # Upload to S3
+        file_key = f'certificates/{donor_id}/{datetime.now().strftime("%Y%m%d%H%M%S")}_certificate.pdf'
+        s3.put_object(
+            Bucket=BUCKET_NAME,
+            Key=file_key,
+            Body=pdf_buffer.getvalue(),
+            ContentType='application/pdf'
+        )
+
+        # Generate pre-signed URL valid for 1 hour
+        download_url = s3.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': BUCKET_NAME, 'Key': file_key},
+            ExpiresIn=3600
+        )
+
+        # Update history record with certificate URL
+        if history_id:
+            try:
+                history_table.update_item(
+                    Key={'HistoryID': history_id},
+                    UpdateExpression='SET CertificateURL = :url',
+                    ExpressionAttributeValues={':url': download_url}
+                )
+            except Exception:
+                pass
+
+        return response(200, {
+            'message': 'Certificate generated successfully',
+            'certificate_url': download_url,
+            'donor_name': donor_name,
+            'blood_type': blood_type,
+            'donation_date': donation_date,
+            'hospital_name': hospital_name
+        })
+
+    except Exception as e:
+        return response(500, {'message': str(e)})
+
+==================== backend/donor_function.py ====================
+
+import json
+import boto3
+import uuid
+from datetime import datetime
+from decimal import Decimal
+
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('Donors')
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
+
+def lambda_handler(event, context):
+    try:
+        method = event['httpMethod']
+        if method == 'POST':
+            return register_donor(event)
+        elif method == 'GET':
+            return get_donors(event)
+        else:
+            return response(405, {'message': 'Method not allowed'})
+    except Exception as e:
+        return response(500, {'message': str(e)})
+
+def register_donor(event):
+    body = json.loads(event['body'])
+    donor_id = str(uuid.uuid4())
+    item = {
+        'DonorID': donor_id,
+        'Name': body['name'],
+        'Email': body.get('email', ''),
+        'BloodType': body['blood_type'],
+        'Location': body['location'],
+        'Phone': body['phone'],
+        'Availability': body.get('availability', 'Available'),
+        'LastDonationDate': body.get('last_donation_date', ''),
+        'CreatedAt': datetime.now().isoformat()
+    }
+    table.put_item(Item=item)
+    return response(201, {'message': 'Donor registered successfully', 'DonorID': donor_id})
+
+def get_donors(event):
+    params = event.get('queryStringParameters') or {}
+    blood_type = params.get('blood_type')
+    if blood_type:
+        result = table.scan(
+            FilterExpression='BloodType = :bt',
+            ExpressionAttributeValues={':bt': blood_type}
+        )
+    else:
+        result = table.scan()
+    return response(200, result['Items'])
+
+def response(status_code, body):
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        },
+        'body': json.dumps(body, cls=DecimalEncoder)
+    }
+
+==================== backend/history_function.py ====================
+
+import json
+import boto3
+import uuid
+from datetime import datetime
+from decimal import Decimal
+
+# ============================================================
+# HISTORY FUNCTION
+# Records donation history and auto-updates donor availability
+# ============================================================
+
+dynamodb = boto3.resource('dynamodb')
+
+history_table = dynamodb.Table('DonationHistory')
+donors_table = dynamodb.Table('Donors')
+requests_table = dynamodb.Table('Requests')
+
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
+
+
+def response(status_code, body):
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        },
+        'body': json.dumps(body, cls=DecimalEncoder)
+    }
+
+
+def lambda_handler(event, context):
+    try:
+        method = event['httpMethod']
+
+        if method == 'POST':
+            return add_history(event)
+        elif method == 'GET':
+            return get_history(event)
+        else:
+            return response(405, {'message': 'Method not allowed'})
+
+    except Exception as e:
+        return response(500, {'message': str(e)})
+
+
+def add_history(event):
+    body = json.loads(event['body'])
+
+    history_id = str(uuid.uuid4())
+
+    item = {
+        'HistoryID': history_id,
+        'DonorID': body['donor_id'],
+        'DonationDate': body.get('donation_date', datetime.now().isoformat()),
+        'HospitalName': body['hospital_name'],
+        'CertificateURL': body.get('certificate_url', '')
+    }
+
+    history_table.put_item(Item=item)
+
+    # ── Auto-update donor availability to Unavailable ──
+    try:
+        donors_table.update_item(
+            Key={'DonorID': body['donor_id']},
+            UpdateExpression='SET Availability = :a, LastDonationDate = :d',
+            ExpressionAttributeValues={
+                ':a': 'Unavailable',
+                ':d': body.get('donation_date', datetime.now().isoformat())[:10]
+            }
+        )
+    except Exception:
+        pass
+
+    # ── Auto-update request status to matched if request_id provided ──
+    try:
+        request_id = body.get('request_id', '')
+        if request_id:
+            requests_table.update_item(
+                Key={'RequestID': request_id},
+                UpdateExpression='SET #s = :s',
+                ExpressionAttributeNames={'#s': 'Status'},
+                ExpressionAttributeValues={':s': 'matched'}
+            )
+    except Exception:
+        pass
+
+    return response(201, {
+        'message': 'History added successfully',
+        'HistoryID': history_id
+    })
+
+
+def get_history(event):
+    params = event.get('queryStringParameters') or {}
+    donor_id = params.get('donor_id')
+
+    if donor_id:
+        result = history_table.scan(
+            FilterExpression='DonorID = :d',
+            ExpressionAttributeValues={':d': donor_id}
+        )
+    else:
+        result = history_table.scan()
+
+    return response(200, result['Items'])
+
+==================== backend/match_function.py ====================
+
+import json
+import boto3
+from decimal import Decimal
+
+dynamodb = boto3.resource('dynamodb')
+sns = boto3.client('sns')
+
+donors_table = dynamodb.Table('Donors')
+requests_table = dynamodb.Table('Requests')
+
+BLOOD_COMPATIBILITY = {
+    'A+': ['A+', 'A-', 'O+', 'O-'],
+    'A-': ['A-', 'O-'],
+    'B+': ['B+', 'B-', 'O+', 'O-'],
+    'B-': ['B-', 'O-'],
+    'AB+': ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
+    'AB-': ['A-', 'B-', 'AB-', 'O-'],
+    'O+': ['O+', 'O-'],
+    'O-': ['O-']
+}
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
+
+def lambda_handler(event, context):
+    try:
+        params = event.get('queryStringParameters') or {}
+        request_id = params.get('request_id')
+        if not request_id:
+            return response(400, {'message': 'request_id is required'})
+
+        request_result = requests_table.get_item(Key={'RequestID': request_id})
+        if 'Item' not in request_result:
+            return response(404, {'message': 'Request not found'})
+
+        blood_request = request_result['Item']
+        needed_type = blood_request['BloodType']
+        compatible_types = BLOOD_COMPATIBILITY.get(needed_type, [])
+
+        donors_result = donors_table.scan()
+        matching_donors = [
+            d for d in donors_result['Items']
+            if d['BloodType'] in compatible_types
+            and d.get('Availability') == 'Available'
+        ]
+
+        # Send urgent alert emails to matching donors
+        if matching_donors and blood_request.get('Urgency') == 'Urgent':
+            for donor in matching_donors:
+                donor_email = donor.get('Email', '')
+                donor_name = donor.get('Name', 'Donor')
+                if donor_email:
+                    try:
+                        sns.publish(
+                            TopicArn='arn:aws:sns:us-east-1:065837433541:urgent-blood-alerts',
+                            Message=f"""Dear {donor_name},
+
+URGENT BLOOD REQUEST!
+
+Hospital: {blood_request.get('HospitalName', 'Unknown')}
+Blood Type Needed: {needed_type}
+Quantity: {blood_request.get('Quantity', 'Unknown')} units
+Urgency: URGENT
+
+Your blood type ({donor.get('BloodType')}) is compatible. Please contact the hospital immediately!
+
+Thank you for saving a life!
+
+- BloodOps Team""",
+                            Subject=f'URGENT - Blood Needed at {blood_request.get("HospitalName", "Hospital")}!'
+                        )
+                    except Exception as e:
+                        print(f"Failed to send urgent alert to {donor_name}: {str(e)}")
+
+        return response(200, {
+            'request': blood_request,
+            'matching_donors': matching_donors,
+            'total_matches': len(matching_donors)
+        })
+    except Exception as e:
+        return response(500, {'message': str(e)})
+
+def response(status_code, body):
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        },
+        'body': json.dumps(body, cls=DecimalEncoder)
+    }
+
+==================== backend/reminder_function.py ====================
+
+import json
+import boto3
+from datetime import datetime, timedelta
+from decimal import Decimal
+
+dynamodb = boto3.resource('dynamodb')
+sns = boto3.client('sns')
+
+table = dynamodb.Table('DonationHistory')
+donors_table = dynamodb.Table('Donors')
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
+
+def lambda_handler(event, context):
+    try:
+        three_months_ago = (datetime.now() - timedelta(days=90)).isoformat()
+        history_result = table.scan()
+
+        recent_donors = {}
+        for item in history_result['Items']:
+            donor_id = item['DonorID']
+            donation_date = item['DonationDate']
+            if donor_id not in recent_donors or donation_date > recent_donors[donor_id]:
+                recent_donors[donor_id] = donation_date
+
+        eligible_donors = [
+            donor_id for donor_id, last_date in recent_donors.items()
+            if last_date < three_months_ago
+        ]
+
+        donors_result = donors_table.scan()
+        reminders_sent = 0
+
+        for donor in donors_result['Items']:
+            if donor['DonorID'] in eligible_donors:
+                donor_email = donor.get('Email', '')
+                donor_name = donor.get('Name', 'Donor')
+
+                if donor_email:
+                    try:
+                        # Create a personal SNS topic for this donor's email
+                        sns_client = boto3.client('sns')
+                        
+                        # Publish to reminder topic with donor details
+                        sns_client.publish(
+                            TopicArn='arn:aws:sns:us-east-1:065837433541:reminder-alerts',
+                            Message=f"""Dear {donor_name},
+
+You are now eligible to donate blood again! It has been over 3 months since your last donation.
+
+Your donation can save up to 3 lives. Please consider visiting your nearest blood bank today.
+
+Thank you for being a hero!
+
+- BloodOps Team""",
+                            Subject=f'BloodOps - Time to Donate Again, {donor_name}!',
+                            MessageAttributes={
+                                'email': {
+                                    'DataType': 'String',
+                                    'StringValue': donor_email
+                                }
+                            }
+                        )
+                        reminders_sent += 1
+                    except Exception as e:
+                        print(f"Failed to send reminder to {donor_name}: {str(e)}")
+
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({
+                'message': f'Reminders sent to {reminders_sent} donors',
+                'eligible_count': len(eligible_donors)
+            })
+        }
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'message': str(e)})
+        }
+
+==================== backend/request_function.py ====================
+
+import json
+import boto3
+import uuid
+from datetime import datetime
+from decimal import Decimal
+
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('Requests')
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
+
+def lambda_handler(event, context):
+    try:
+        method = event['httpMethod']
+        if method == 'POST':
+            return create_request(event)
+        elif method == 'GET':
+            return get_requests(event)
+        else:
+            return response(405, {'message': 'Method not allowed'})
+    except Exception as e:
+        return response(500, {'message': str(e)})
+
+def create_request(event):
+    body = json.loads(event['body'])
+    request_id = str(uuid.uuid4())
+    item = {
+        'RequestID': request_id,
+        'HospitalName': body['hospital_name'],
+        'BloodType': body['blood_type'],
+        'Quantity': body['quantity'],
+        'Urgency': body['urgency'],
+        'Status': 'pending',
+        'Timestamp': datetime.now().isoformat()
+    }
+    table.put_item(Item=item)
+    return response(201, {'message': 'Request created successfully', 'RequestID': request_id})
+
+def get_requests(event):
+    params = event.get('queryStringParameters') or {}
+    status = params.get('status')
+    if status:
+        result = table.scan(
+            FilterExpression='#s = :s',
+            ExpressionAttributeNames={'#s': 'Status'},
+            ExpressionAttributeValues={':s': status}
+        )
+    else:
+        result = table.scan()
+    return response(200, result['Items'])
+
+def response(status_code, body):
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        },
+        'body': json.dumps(body, cls=DecimalEncoder)
+    }
+
+==================== frontend/admin-secret-bloodops-2026.html ====================
+
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BloodOps Admin</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,500&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #0c0000;
+      --panel: rgba(32, 6, 8, 0.8);
+      --panel-solid: #2a0709;
+      --card: rgba(255, 255, 255, 0.045);
+      --text: #fff4f4;
+      --muted: #f5c8cd;
+      --primary: #ff475f;
+      --primary-soft: rgba(255, 71, 95, 0.22);
+      --ok: #6ff0bf;
+      --error: #ff9f9f;
+      --ring: rgba(255, 225, 225, 0.16);
+      --shadow: 0 20px 42px rgba(17, 0, 0, 0.45);
+      --radius: 16px;
+      --nav-h: 60px;
+    }
+
+    [data-theme="light"] {
+      --bg: #f9f0f0;
+      --panel: rgba(245, 220, 220, 0.98);
+      --panel-solid: #f0cccc;
+      --card: rgba(180, 60, 60, 0.12);
+      --text: #1a0005;
+      --muted: #5a0018;
+      --primary: #c01030;
+      --primary-soft: rgba(192, 16, 48, 0.18);
+      --ok: #0f5c38;
+      --error: #a02020;
+      --ring: rgba(140, 10, 40, 0.32);
+      --shadow: 0 20px 42px rgba(140, 10, 40, 0.2);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: Manrope, Segoe UI, Arial, sans-serif;
+      color: var(--text);
+      background:
+        linear-gradient(145deg, rgba(0,0,0,0.88) 10%, transparent 10%, transparent 35%, rgba(0,0,0,0.9) 35%, rgba(0,0,0,0.9) 56%, transparent 56%, transparent 78%, rgba(0,0,0,0.9) 78%),
+        repeating-linear-gradient(to right, rgba(255,25,40,0.03) 0px, rgba(255,25,40,0.7) 2px, rgba(255,25,40,0.16) 4px, rgba(0,0,0,0.35) 10px, rgba(255,30,47,0.04) 16px),
+        radial-gradient(circle at 82% 46%, rgba(255,0,38,0.45) 0%, rgba(255,0,38,0.04) 34%, transparent 58%),
+        radial-gradient(circle at 27% 22%, rgba(255,0,38,0.3) 0%, transparent 43%),
+        linear-gradient(160deg, #1a0002 0%, #0c0000 55%, #080000 100%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    [data-theme="light"] body {
+      background: linear-gradient(160deg, #f5e0e0 0%, #f9f0f0 55%, #fdf8f8 100%);
+    }
+
+    /* NAVBAR */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0;
+      height: var(--nav-h); z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(12,0,0,0.82);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--ring);
+    }
+    [data-theme="light"] .navbar { background: rgba(230,180,180,0.96); border-color: rgba(140,10,40,0.3); }
+
+    .nav-logo {
+      width: 42px; height: 42px; vertical-align: middle;
+      mix-blend-mode: screen;
+      filter: drop-shadow(0 0 6px rgba(255,60,70,0.7));
+      margin-right: 8px;
+      animation: spinY 3s linear infinite;
+    }
+    [data-theme="light"] .nav-logo { mix-blend-mode: normal; }
+
+    .nav-brand {
+      font-family: Fraunces, serif; font-size: 1.25rem; font-weight: 700;
+      color: var(--text); text-decoration: none; display: flex; align-items: center;
+    }
+
+    .admin-badge {
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      color: white; font-size: 0.68rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 999px; margin-left: 8px;
+      letter-spacing: 0.05em; text-transform: uppercase;
+    }
+
+    .nav-right { display: flex; align-items: center; gap: 8px; }
+
+    .theme-toggle {
+      background: var(--card); border: 1px solid var(--ring); border-radius: 999px;
+      width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 1rem; color: var(--text); transition: background 0.2s;
+    }
+    .theme-toggle:hover { background: var(--primary-soft); }
+
+    .refresh-btn {
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      border: none; border-radius: 999px;
+      padding: 7px 16px; font: inherit; font-size: 0.82rem; font-weight: 700;
+      color: white; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 14px rgba(180,30,50,0.4);
+    }
+    .refresh-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(180,30,50,0.55); }
+    .refresh-btn.spinning { animation: spin 0.7s linear; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* CONTAINER */
+    .container {
+      width: min(1200px, 94vw); margin: 0 auto;
+      padding: calc(var(--nav-h) + 28px) 0 80px;
+      position: relative; z-index: 1;
+    }
+
+    /* HERO HEADER */
+    .admin-hero {
+      text-align: center; padding: 36px 20px 28px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.11), rgba(255,255,255,0.03));
+      border: 1px solid var(--ring); border-radius: 24px;
+      box-shadow: var(--shadow); backdrop-filter: blur(12px);
+      animation: riseIn 0.7s ease; margin-bottom: 24px;
+    }
+    [data-theme="light"] .admin-hero {
+      background: linear-gradient(145deg, rgba(240,200,200,0.85), rgba(230,180,180,0.65));
+      border-color: rgba(140,10,40,0.3);
+    }
+
+    .admin-hero-inner { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+    .admin-logo {
+      width: 64px; height: 64px;
+      mix-blend-mode: screen; filter: drop-shadow(0 0 10px rgba(255,60,70,0.5));
+      animation: spinY 3s linear infinite;
+    }
+    [data-theme="light"] .admin-logo { mix-blend-mode: normal; }
+
+    .admin-hero h1 {
+      font-family: Fraunces, serif; font-size: clamp(1.6rem, 3vw, 2.4rem);
+      font-weight: 700; letter-spacing: -0.02em;
+      background: linear-gradient(180deg, #fffef7 0%, #f7f0e4 38%, #ead9c4 72%, #dcc5a8 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      animation: titleGlow 2.8s ease-in-out infinite;
+    }
+    [data-theme="light"] .admin-hero h1 {
+      background: linear-gradient(160deg, #6b0000 0%, #a01020 35%, #c8192e 60%, #800010 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+
+    .admin-hero p { color: var(--muted); font-size: 0.92rem; margin-top: 6px; }
+    .last-updated { font-size: 0.8rem; color: var(--muted); margin-top: 8px; opacity: 0.7; }
+
+    /* SECTION */
+    .section {
+      margin-top: 24px; background: var(--panel); border: 1px solid var(--ring);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px;
+      backdrop-filter: blur(6px); animation: fadeIn 0.8s ease;
+    }
+    .section h2 { margin: 0 0 16px; font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+
+    /* SKELETON */
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 75%);
+      background-size: 200% 100%; animation: shimmer 1.4s infinite;
+      border-radius: 6px; height: 1.55rem; width: 60%; margin-top: 6px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* FORM INPUTS */
+    label { display: block; margin-bottom: 6px; font-size: .9rem; color: var(--muted); }
+    input, select, button { font: inherit; }
+    input, select {
+      width: 100%; padding: 11px 12px; border-radius: 10px;
+      border: 1px solid var(--ring);
+      background: rgba(20, 4, 4, 0.75);
+      color: var(--text); outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+    [data-theme="light"] input, [data-theme="light"] select {
+      background: rgba(240,210,210,0.9);
+      border-color: rgba(140,10,40,0.3);
+      color: #1a0005;
+    }
+    .field-group { margin-bottom: 12px; }
+
+    /* STATS GRID */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .stat-card {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 16px; transition: transform .25s ease, border-color .25s ease;
+    }
+    [data-theme="light"] .stat-card { background: rgba(180,60,60,0.14); border-color: rgba(140,10,40,0.2); }
+    .stat-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.2); }
+    .stat-card .label { color: var(--muted); font-size: .85rem; font-weight: 600; }
+    .stat-card .value { margin-top: 8px; font-size: 1.8rem; font-weight: 700; }
+    .stat-card .sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    /* BLOOD TYPE BARS */
+    .blood-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .blood-bar-card {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 12px;
+    }
+    [data-theme="light"] .blood-bar-card { background: rgba(180,60,60,0.12); border-color: rgba(140,10,40,0.2); }
+    .blood-bar-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 700; font-size: 0.95rem; }
+    .blood-bar-track { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+    .blood-bar-fill { height: 100%; border-radius: 999px; transition: width 0.9s ease; }
+    .blood-bar-fill.low { background: linear-gradient(90deg, #ff9f9f, #ffcfcf); }
+    .blood-bar-fill.med { background: linear-gradient(90deg, #ff6b35, #ffaa80); }
+    .blood-bar-fill.high { background: linear-gradient(90deg, var(--ok), #a8f0d8); }
+    .blood-bar-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    /* TABLE */
+    .table-wrap {
+      width: 100%; overflow-x: auto;
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+      background: rgba(14,21,37,0.65);
+    }
+    [data-theme="light"] .table-wrap { background: rgba(220,160,160,0.35); border-color: rgba(140,10,40,0.25); }
+    table { width: 100%; min-width: 600px; border-collapse: collapse; }
+    th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: .88rem; }
+    th { color: #ffd2d2; font-weight: 700; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.03); }
+    [data-theme="light"] th { color: #1a0005; font-weight: 800; background: rgba(180,60,60,0.12); }
+    [data-theme="light"] td { color: #1a0005; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.03); }
+    [data-theme="light"] tr:hover td { background: rgba(180,60,60,0.08); }
+    a { color: #ffd9df; text-decoration: none; }
+    a:hover { color: #ffffff; text-decoration: underline; }
+    [data-theme="light"] a { color: #8b0000; }
+    [data-theme="light"] a:hover { color: #1a0005; }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 0.75rem; font-weight: 700;
+    }
+    .badge-urgent { background: rgba(255,71,95,0.2); color: #ff8fa3; border: 1px solid rgba(255,71,95,0.3); }
+    .badge-normal { background: rgba(111,240,191,0.15); color: #6ff0bf; border: 1px solid rgba(111,240,191,0.25); }
+    .badge-pending { background: rgba(255,170,80,0.2); color: #ffaa50; border: 1px solid rgba(255,170,80,0.3); }
+    .badge-matched { background: rgba(111,240,191,0.15); color: #6ff0bf; border: 1px solid rgba(111,240,191,0.25); }
+    .badge-available { background: rgba(111,240,191,0.15); color: #6ff0bf; border: 1px solid rgba(111,240,191,0.25); }
+    .badge-unavailable { background: rgba(255,159,159,0.2); color: #ff9f9f; border: 1px solid rgba(255,159,159,0.3); }
+    [data-theme="light"] .badge-urgent { background: rgba(180,0,30,0.1); color: #8b0000; border-color: rgba(180,0,30,0.2); }
+    [data-theme="light"] .badge-normal { background: rgba(15,92,56,0.1); color: #0f5c38; border-color: rgba(15,92,56,0.2); }
+    [data-theme="light"] .badge-pending { background: rgba(180,100,0,0.1); color: #7a4000; border-color: rgba(180,100,0,0.2); }
+    [data-theme="light"] .badge-matched { background: rgba(15,92,56,0.1); color: #0f5c38; border-color: rgba(15,92,56,0.2); }
+    [data-theme="light"] .badge-available { background: rgba(15,92,56,0.1); color: #0f5c38; border-color: rgba(15,92,56,0.2); }
+    [data-theme="light"] .badge-unavailable { background: rgba(180,0,30,0.1); color: #8b0000; border-color: rgba(180,0,30,0.2); }
+
+    .empty-row td { text-align: center; color: var(--muted); padding: 24px; font-style: italic; }
+
+    .btn {
+      border: 1px solid rgba(180,40,60,0.65); border-radius: 10px; padding: 11px 16px; cursor: pointer;
+      background: linear-gradient(135deg, var(--primary), #b51738); color: white; font-weight: 600;
+      box-shadow: 0 0 8px rgba(160,30,50,0.45); transition: transform .15s ease, box-shadow .2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 0 14px rgba(180,40,60,0.65), 0 6px 18px rgba(60,5,15,0.5); }
+    .btn:disabled { opacity: .75; cursor: not-allowed; transform: none; }
+
+    .message { min-height: 20px; font-size: .88rem; margin-bottom: 10px; }
+    .message.success { color: var(--ok); }
+    .message.error { color: var(--error); }
+    .message.info { color: var(--muted); }
+
+    /* BACK TO TOP */
+    .back-to-top {
+      position: fixed; bottom: 24px; right: 24px; z-index: 99;
+      width: 42px; height: 42px; border-radius: 999px;
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      border: none; color: white; font-size: 1.1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 20px rgba(180,30,50,0.45);
+      opacity: 0; transform: translateY(12px); transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+    }
+    .back-to-top.visible { opacity: 1; transform: translateY(0); pointer-events: all; }
+    .back-to-top:hover { transform: translateY(-2px); }
+
+    /* ANIMATIONS */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes riseIn { from { opacity: 0; transform: translateY(18px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes spinY { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
+    @keyframes titleGlow {
+      0%, 100% { filter: drop-shadow(0 0 10px rgba(255,248,235,0.4)) drop-shadow(0 0 20px rgba(234,217,196,0.34)); }
+      50% { filter: drop-shadow(0 0 14px rgba(255,252,242,0.55)) drop-shadow(0 0 28px rgba(241,226,204,0.42)); }
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 980px) {
+      .stats-grid, .blood-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .container { width: 96vw; }
+      .stats-grid, .blood-grid { grid-template-columns: 1fr; }
+      table { min-width: 500px; }
+      .admin-hero-inner { flex-direction: column; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <a href="#" class="nav-brand">
+      <img src="./logo.png" alt="" class="nav-logo"/>
+      BloodOps
+      <span class="admin-badge">Admin</span>
+    </a>
+    <div class="nav-right">
+      <button class="refresh-btn" id="refreshBtn" onclick="refreshAll()">↻ Refresh</button>
+      <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <!-- ADMIN HERO -->
+    <div class="admin-hero">
+      <div class="admin-hero-inner">
+        <img src="./logo.png" class="admin-logo" alt="BloodOps" />
+        <div>
+          <h1>Admin Dashboard</h1>
+          <p>Live data from AWS DynamoDB — only you can see this</p>
+          <div class="last-updated" id="lastUpdated">Last updated: —</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATS ROW -->
+    <section class="section">
+      <h2>📊 Overview</h2>
+      <div id="statsMessage" class="message info">Loading dashboard...</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="label">Total Donors</div>
+          <div id="totalDonors" class="value"><div class="skeleton"></div></div>
+          <div class="sub">Registered in system</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Requests</div>
+          <div id="totalRequests" class="value"><div class="skeleton"></div></div>
+          <div class="sub">From hospitals</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Donations</div>
+          <div id="totalDonations" class="value"><div class="skeleton"></div></div>
+          <div class="sub">Completed donations</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Pending Requests</div>
+          <div id="pendingRequests" class="value"><div class="skeleton"></div></div>
+          <div class="sub">Awaiting match</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BLOOD TYPE AVAILABILITY -->
+    <section class="section">
+      <h2>🩸 Blood Type Availability</h2>
+      <div class="blood-grid" id="bloodGrid">
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>A+</span><span id="bAPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barAPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>A-</span><span id="bANeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barANeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>B+</span><span id="bBPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barBPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>B-</span><span id="bBNeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barBNeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>O+</span><span id="bOPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barOPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>O-</span><span id="bONeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barONeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>AB+</span><span id="bABPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barABPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>AB-</span><span id="bABNeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barABNeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+      </div>
+    </section>
+
+    <!-- RECORD DONATION -->
+    <section class="section">
+      <h2>✅ Record Completed Donation</h2>
+      <p style="color:var(--muted);font-size:0.88rem;margin-bottom:16px;">When a hospital calls to confirm a donation, record it here using the Donor ID and Request ID.</p>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+        <div class="field-group">
+          <label for="recordDonorId">Donor ID</label>
+          <input id="recordDonorId" type="text" placeholder="Paste Donor ID" />
+        </div>
+        <div class="field-group">
+          <label for="recordHospitalName">Hospital Name</label>
+          <input id="recordHospitalName" type="text" placeholder="Hospital name" />
+        </div>
+        <div class="field-group">
+          <label for="recordRequestId">Request ID (optional)</label>
+          <input id="recordRequestId" type="text" placeholder="Paste Request ID" />
+        </div>
+        <div class="field-group">
+          <label for="recordDate">Donation Date</label>
+          <input id="recordDate" type="date" />
+        </div>
+      </div>
+      <button class="btn" id="recordDonationBtn" onclick="recordDonation()" style="margin-top:8px;">Record Donation</button>
+      <div id="recordMessage" class="message" style="margin-top:10px;"></div>
+    </section>
+
+    <!-- PENDING REQUESTS TABLE -->
+    <section class="section">
+      <h2>🏥 Pending Requests</h2>
+      <div id="requestsMessage" class="message info">Loading...</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Request ID</th>
+              <th>Hospital Name</th>
+              <th>Blood Type</th>
+              <th>Quantity</th>
+              <th>Urgency</th>
+              <th>Timestamp</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="requestsTableBody">
+            <tr class="empty-row"><td colspan="7">Loading requests...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="section">
+      <h2>👤 All Donors</h2>
+      <div id="donorsMessage" class="message info">Loading...</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Donor ID</th>
+              <th>Name</th>
+              <th>Blood Type</th>
+              <th>Location</th>
+              <th>Phone</th>
+              <th>Availability</th>
+              <th>Last Donation</th>
+            </tr>
+          </thead>
+          <tbody id="donorsTableBody">
+            <tr class="empty-row"><td colspan="7">Loading donors...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DONATION HISTORY TABLE -->
+    <section class="section">
+      <h2>💉 Recent Donations</h2>
+      <div id="historyMessage" class="message info">Loading...</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>History ID</th>
+              <th>Donor ID</th>
+              <th>Hospital</th>
+              <th>Donation Date</th>
+              <th>Certificate</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr class="empty-row"><td colspan="5">Loading history...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- BACK TO TOP -->
+  <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+  <script>
+    const API_URL = 'https://pov9qy4ue5.execute-api.us-east-1.amazonaws.com/prod';
+    const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+
+    const bloodTypeEls = {
+      'A+': document.getElementById('bAPlus'), 'A-': document.getElementById('bANeg'),
+      'B+': document.getElementById('bBPlus'), 'B-': document.getElementById('bBNeg'),
+      'O+': document.getElementById('bOPlus'), 'O-': document.getElementById('bONeg'),
+      'AB+': document.getElementById('bABPlus'), 'AB-': document.getElementById('bABNeg')
+    };
+    const barEls = {
+      'A+': document.getElementById('barAPlus'), 'A-': document.getElementById('barANeg'),
+      'B+': document.getElementById('barBPlus'), 'B-': document.getElementById('barBNeg'),
+      'O+': document.getElementById('barOPlus'), 'O-': document.getElementById('barONeg'),
+      'AB+': document.getElementById('barABPlus'), 'AB-': document.getElementById('barABNeg')
+    };
+
+    // THEME
+    const themeToggle = document.getElementById('themeToggle');
+    const savedTheme = localStorage.getItem('bloodops-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    themeToggle.textContent = savedTheme === 'dark' ? '🌙' : '☀️';
+    themeToggle.addEventListener('click', () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      themeToggle.textContent = next === 'dark' ? '🌙' : '☀️';
+      localStorage.setItem('bloodops-theme', next);
+    });
+
+    // BACK TO TOP
+    const backToTop = document.getElementById('backToTop');
+    window.addEventListener('scroll', () => backToTop.classList.toggle('visible', window.scrollY > 300));
+
+    // HELPERS
+    function setMessage(el, text, type) { el.textContent = text || ''; el.className = `message ${type || ''}`.trim(); }
+
+    function animateCount(el, target) {
+      let start = 0; const dur = 800;
+      el.innerHTML = '';
+      const step = (ts) => {
+        if (!start) start = ts;
+        const p = Math.min((ts - start) / dur, 1);
+        el.textContent = Math.floor(p * target);
+        if (p < 1) requestAnimationFrame(step); else el.textContent = target;
+      };
+      requestAnimationFrame(step);
+    }
+
+    function badgeUrgency(u) {
+      const v = (u || '').toLowerCase();
+      return `<span class="badge badge-${v}">${u || '-'}</span>`;
+    }
+    function badgeStatus(s) {
+      const v = (s || '').toLowerCase();
+      return `<span class="badge badge-${v}">${s || '-'}</span>`;
+    }
+    function badgeAvailability(a) {
+      const v = (a || '').toLowerCase();
+      return `<span class="badge badge-${v}">${a || '-'}</span>`;
+    }
+
+    function shortId(id) {
+      if (!id) return '-';
+      return `<span title="${id}">${id.substring(0,8)}...</span>`;
+    }
+
+    function formatDate(d) {
+      if (!d) return '-';
+      try { return new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }); } catch { return d; }
+    }
+
+    // FETCH ADMIN STATS
+    async function fetchAdminStats() {
+      const msg = document.getElementById('statsMessage');
+      setMessage(msg, 'Fetching live stats...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/admin`);
+        if (!res.ok) throw new Error('Failed to fetch admin stats.');
+        const data = await res.json();
+
+        const totalDonors = data.total_donors ?? data.totalDonors ?? 0;
+        const totalRequests = data.total_requests ?? data.totalRequests ?? 0;
+        const totalDonations = data.total_donations ?? data.totalDonations ?? 0;
+        const pendingReqs = data.pending_requests ?? data.pendingRequests ?? [];
+        const bloodTypeCounts = data.blood_type_availability ?? data.blood_type_counts ?? data.bloodTypeCounts ?? {};
+
+        animateCount(document.getElementById('totalDonors'), totalDonors);
+        animateCount(document.getElementById('totalRequests'), totalRequests);
+        animateCount(document.getElementById('totalDonations'), totalDonations);
+        animateCount(document.getElementById('pendingRequests'), Array.isArray(pendingReqs) ? pendingReqs.length : pendingReqs);
+
+        const maxVal = Math.max(...bloodTypes.map(t => Number(bloodTypeCounts[t] || 0)), 1);
+        bloodTypes.forEach(type => {
+          const count = Number(bloodTypeCounts[type] || 0);
+          bloodTypeEls[type].textContent = count;
+          const pct = Math.round((count / maxVal) * 100);
+          const bar = barEls[type];
+          bar.style.width = pct + '%';
+          bar.className = 'blood-bar-fill ' + (pct < 25 ? 'low' : pct < 60 ? 'med' : 'high');
+        });
+
+        document.getElementById('lastUpdated').textContent = `Last updated: ${new Date().toLocaleTimeString('en-IN')}`;
+        setMessage(msg, `Dashboard loaded successfully.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading stats.', 'error');
+      }
+    }
+
+    // FETCH PENDING REQUESTS
+    async function fetchRequests() {
+      const msg = document.getElementById('requestsMessage');
+      const tbody = document.getElementById('requestsTableBody');
+      setMessage(msg, 'Loading requests...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/requests?status=pending`);
+        if (!res.ok) throw new Error('Failed to fetch requests.');
+        const data = await res.json();
+        const requests = Array.isArray(data) ? data : (data.Items || data.requests || []);
+        if (requests.length === 0) {
+          tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No pending requests found</td></tr>';
+          setMessage(msg, 'No pending requests.', 'info');
+          return;
+        }
+        tbody.innerHTML = requests.map(r => `
+          <tr>
+            <td>${shortId(r.RequestID ?? r.request_id)}</td>
+            <td>${r.HospitalName ?? r.hospital_name ?? '-'}</td>
+            <td><strong>${r.BloodType ?? r.blood_type ?? '-'}</strong></td>
+            <td>${r.Quantity ?? r.quantity ?? '-'} units</td>
+            <td>${badgeUrgency(r.Urgency ?? r.urgency)}</td>
+            <td>${formatDate(r.Timestamp ?? r.timestamp ?? r.CreatedAt)}</td>
+            <td>${badgeStatus(r.Status ?? r.status ?? 'pending')}</td>
+          </tr>`).join('');
+        setMessage(msg, `${requests.length} pending request(s) found.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading requests.', 'error');
+        document.getElementById('requestsTableBody').innerHTML = '<tr class="empty-row"><td colspan="7">Failed to load requests</td></tr>';
+      }
+    }
+
+    // FETCH ALL DONORS
+    async function fetchDonors() {
+      const msg = document.getElementById('donorsMessage');
+      const tbody = document.getElementById('donorsTableBody');
+      setMessage(msg, 'Loading donors...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/donors`);
+        if (!res.ok) throw new Error('Failed to fetch donors.');
+        const data = await res.json();
+        const donors = Array.isArray(data) ? data : (data.Items || data.donors || []);
+        if (donors.length === 0) {
+          tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No donors registered yet</td></tr>';
+          setMessage(msg, 'No donors found.', 'info');
+          return;
+        }
+        tbody.innerHTML = donors.map(d => `
+          <tr>
+            <td>${shortId(d.DonorID ?? d.donor_id)}</td>
+            <td>${d.Name ?? d.name ?? '-'}</td>
+            <td><strong>${d.BloodType ?? d.blood_type ?? '-'}</strong></td>
+            <td>${d.Location ?? d.location ?? '-'}</td>
+            <td>${d.Phone ?? d.phone ?? '-'}</td>
+            <td>${badgeAvailability(d.Availability ?? d.availability)}</td>
+            <td>${formatDate(d.LastDonationDate ?? d.last_donation_date)}</td>
+          </tr>`).join('');
+        setMessage(msg, `${donors.length} donor(s) registered.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading donors.', 'error');
+        document.getElementById('donorsTableBody').innerHTML = '<tr class="empty-row"><td colspan="7">Failed to load donors</td></tr>';
+      }
+    }
+
+    // FETCH DONATION HISTORY
+    async function fetchHistory() {
+      const msg = document.getElementById('historyMessage');
+      const tbody = document.getElementById('historyTableBody');
+      setMessage(msg, 'Loading donation history...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/history`);
+        if (!res.ok) throw new Error('Failed to fetch history.');
+        const data = await res.json();
+        const history = Array.isArray(data) ? data : (data.Items || data.history || []);
+        if (history.length === 0) {
+          tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No donations recorded yet</td></tr>';
+          setMessage(msg, 'No donation history found.', 'info');
+          return;
+        }
+        tbody.innerHTML = history.map(h => {
+          const certUrl = h.CertificateURL ?? h.certificate_url ?? h.certificateUrl ?? '';
+          const histId = h.HistoryID ?? h.history_id ?? '';
+          const donorId = h.DonorID ?? h.donor_id ?? '';
+          const certCell = certUrl
+            ? `<a href="${certUrl}" target="_blank" rel="noopener">Download PDF</a>`
+            : `<button onclick="adminGenerateCert('${histId}','${donorId}')" style="background:linear-gradient(135deg,#ff475f,#b51738);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600;">Generate PDF</button>`;
+          return `<tr>
+            <td>${shortId(h.HistoryID ?? h.history_id)}</td>
+            <td>${shortId(h.DonorID ?? h.donor_id)}</td>
+            <td>${h.HospitalName ?? h.hospital_name ?? '-'}</td>
+            <td>${formatDate(h.DonationDate ?? h.donation_date)}</td>
+            <td>${certCell}</td>
+          </tr>`;
+        }).join('');
+        setMessage(msg, `${history.length} donation record(s) found.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading history.', 'error');
+        document.getElementById('historyTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">Failed to load history</td></tr>';
+      }
+    }
+
+    // RECORD DONATION
+    async function recordDonation() {
+      const btn = document.getElementById('recordDonationBtn');
+      const msg = document.getElementById('recordMessage');
+      const donorId = document.getElementById('recordDonorId').value.trim();
+      const hospitalName = document.getElementById('recordHospitalName').value.trim();
+      const date = document.getElementById('recordDate').value;
+
+      if (!donorId || !hospitalName) {
+        setMessage(msg, 'Donor ID and Hospital Name are required!', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Recording...';
+      setMessage(msg, '', '');
+
+      try {
+        const res = await fetch(`${API_URL}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            donor_id: donorId,
+            hospital_name: hospitalName,
+            donation_date: date || new Date().toISOString(),
+            request_id: document.getElementById('recordRequestId').value.trim()
+          })
+        });
+        if (!res.ok) throw new Error('Failed to record donation.');
+        const data = await res.json();
+        setMessage(msg, `✅ Donation recorded successfully! History ID: ${data.HistoryID ?? data.history_id ?? 'generated'}`, 'success');
+        document.getElementById('recordDonorId').value = '';
+        document.getElementById('recordHospitalName').value = '';
+        document.getElementById('recordRequestId').value = '';
+        document.getElementById('recordDate').value = '';
+        refreshAll();
+      } catch (err) {
+        setMessage(msg, err.message || 'Error recording donation.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Record Donation';
+      }
+    }
+
+    // GENERATE CERTIFICATE FROM ADMIN
+    async function adminGenerateCert(historyId, donorId) {
+      try {
+        const res = await fetch(`${API_URL}/certificate?donor_id=${encodeURIComponent(donorId)}&history_id=${encodeURIComponent(historyId)}`);
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        if (data.certificate_url) {
+          window.open(data.certificate_url, '_blank');
+          setTimeout(() => fetchHistory(), 1500);
+        }
+      } catch (err) {
+        alert('Failed to generate certificate. Please try again.');
+      }
+    }
+
+    // REFRESH ALL
+    async function refreshAll() {
+      const btn = document.getElementById('refreshBtn');
+      btn.classList.add('spinning');
+      btn.disabled = true;
+      await Promise.all([fetchAdminStats(), fetchRequests(), fetchDonors(), fetchHistory()]);
+      btn.classList.remove('spinning');
+      btn.disabled = false;
+    }
+
+    // INIT
+    refreshAll();
+    setInterval(refreshAll, 30000);
+  </script>
+</body>
+</html>
+
+==================== frontend/admin.html ====================
+
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BloodOps Admin</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,500&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #0c0000;
+      --panel: rgba(32, 6, 8, 0.8);
+      --panel-solid: #2a0709;
+      --card: rgba(255, 255, 255, 0.045);
+      --text: #fff4f4;
+      --muted: #f5c8cd;
+      --primary: #ff475f;
+      --primary-soft: rgba(255, 71, 95, 0.22);
+      --ok: #6ff0bf;
+      --error: #ff9f9f;
+      --ring: rgba(255, 225, 225, 0.16);
+      --shadow: 0 20px 42px rgba(17, 0, 0, 0.45);
+      --radius: 16px;
+      --nav-h: 60px;
+    }
+
+    [data-theme="light"] {
+      --bg: #f9f0f0;
+      --panel: rgba(245, 220, 220, 0.98);
+      --panel-solid: #f0cccc;
+      --card: rgba(180, 60, 60, 0.12);
+      --text: #1a0005;
+      --muted: #5a0018;
+      --primary: #c01030;
+      --primary-soft: rgba(192, 16, 48, 0.18);
+      --ok: #0f5c38;
+      --error: #a02020;
+      --ring: rgba(140, 10, 40, 0.32);
+      --shadow: 0 20px 42px rgba(140, 10, 40, 0.2);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: Manrope, Segoe UI, Arial, sans-serif;
+      color: var(--text);
+      background:
+        linear-gradient(145deg, rgba(0,0,0,0.88) 10%, transparent 10%, transparent 35%, rgba(0,0,0,0.9) 35%, rgba(0,0,0,0.9) 56%, transparent 56%, transparent 78%, rgba(0,0,0,0.9) 78%),
+        repeating-linear-gradient(to right, rgba(255,25,40,0.03) 0px, rgba(255,25,40,0.7) 2px, rgba(255,25,40,0.16) 4px, rgba(0,0,0,0.35) 10px, rgba(255,30,47,0.04) 16px),
+        radial-gradient(circle at 82% 46%, rgba(255,0,38,0.45) 0%, rgba(255,0,38,0.04) 34%, transparent 58%),
+        radial-gradient(circle at 27% 22%, rgba(255,0,38,0.3) 0%, transparent 43%),
+        linear-gradient(160deg, #1a0002 0%, #0c0000 55%, #080000 100%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    [data-theme="light"] body {
+      background: linear-gradient(160deg, #f5e0e0 0%, #f9f0f0 55%, #fdf8f8 100%);
+    }
+
+    /* NAVBAR */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0;
+      height: var(--nav-h); z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(12,0,0,0.82);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--ring);
+    }
+    [data-theme="light"] .navbar { background: rgba(230,180,180,0.96); border-color: rgba(140,10,40,0.3); }
+
+    .nav-logo {
+      width: 42px; height: 42px; vertical-align: middle;
+      mix-blend-mode: screen;
+      filter: drop-shadow(0 0 6px rgba(255,60,70,0.7));
+      margin-right: 8px;
+      animation: spinY 3s linear infinite;
+    }
+    [data-theme="light"] .nav-logo { mix-blend-mode: normal; }
+
+    .nav-brand {
+      font-family: Fraunces, serif; font-size: 1.25rem; font-weight: 700;
+      color: var(--text); text-decoration: none; display: flex; align-items: center;
+    }
+
+    .admin-badge {
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      color: white; font-size: 0.68rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 999px; margin-left: 8px;
+      letter-spacing: 0.05em; text-transform: uppercase;
+    }
+
+    .nav-right { display: flex; align-items: center; gap: 8px; }
+
+    .theme-toggle {
+      background: var(--card); border: 1px solid var(--ring); border-radius: 999px;
+      width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 1rem; color: var(--text); transition: background 0.2s;
+    }
+    .theme-toggle:hover { background: var(--primary-soft); }
+
+    .refresh-btn {
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      border: none; border-radius: 999px;
+      padding: 7px 16px; font: inherit; font-size: 0.82rem; font-weight: 700;
+      color: white; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 14px rgba(180,30,50,0.4);
+    }
+    .refresh-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(180,30,50,0.55); }
+    .refresh-btn.spinning { animation: spin 0.7s linear; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* CONTAINER */
+    .container {
+      width: min(1200px, 94vw); margin: 0 auto;
+      padding: calc(var(--nav-h) + 28px) 0 80px;
+      position: relative; z-index: 1;
+    }
+
+    /* HERO HEADER */
+    .admin-hero {
+      text-align: center; padding: 36px 20px 28px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.11), rgba(255,255,255,0.03));
+      border: 1px solid var(--ring); border-radius: 24px;
+      box-shadow: var(--shadow); backdrop-filter: blur(12px);
+      animation: riseIn 0.7s ease; margin-bottom: 24px;
+    }
+    [data-theme="light"] .admin-hero {
+      background: linear-gradient(145deg, rgba(240,200,200,0.85), rgba(230,180,180,0.65));
+      border-color: rgba(140,10,40,0.3);
+    }
+
+    .admin-hero-inner { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+    .admin-logo {
+      width: 64px; height: 64px;
+      mix-blend-mode: screen; filter: drop-shadow(0 0 10px rgba(255,60,70,0.5));
+      animation: spinY 3s linear infinite;
+    }
+    [data-theme="light"] .admin-logo { mix-blend-mode: normal; }
+
+    .admin-hero h1 {
+      font-family: Fraunces, serif; font-size: clamp(1.6rem, 3vw, 2.4rem);
+      font-weight: 700; letter-spacing: -0.02em;
+      background: linear-gradient(180deg, #fffef7 0%, #f7f0e4 38%, #ead9c4 72%, #dcc5a8 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      animation: titleGlow 2.8s ease-in-out infinite;
+    }
+    [data-theme="light"] .admin-hero h1 {
+      background: linear-gradient(160deg, #6b0000 0%, #a01020 35%, #c8192e 60%, #800010 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+
+    .admin-hero p { color: var(--muted); font-size: 0.92rem; margin-top: 6px; }
+    .last-updated { font-size: 0.8rem; color: var(--muted); margin-top: 8px; opacity: 0.7; }
+
+    /* SECTION */
+    .section {
+      margin-top: 24px; background: var(--panel); border: 1px solid var(--ring);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px;
+      backdrop-filter: blur(6px); animation: fadeIn 0.8s ease;
+    }
+    .section h2 { margin: 0 0 16px; font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+
+    /* SKELETON */
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 75%);
+      background-size: 200% 100%; animation: shimmer 1.4s infinite;
+      border-radius: 6px; height: 1.55rem; width: 60%; margin-top: 6px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* FORM INPUTS */
+    label { display: block; margin-bottom: 6px; font-size: .9rem; color: var(--muted); }
+    input, select, button { font: inherit; }
+    input, select {
+      width: 100%; padding: 11px 12px; border-radius: 10px;
+      border: 1px solid var(--ring);
+      background: rgba(20, 4, 4, 0.75);
+      color: var(--text); outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-soft);
+    }
+    [data-theme="light"] input, [data-theme="light"] select {
+      background: rgba(240,210,210,0.9);
+      border-color: rgba(140,10,40,0.3);
+      color: #1a0005;
+    }
+    .field-group { margin-bottom: 12px; }
+
+    /* STATS GRID */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .stat-card {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 16px; transition: transform .25s ease, border-color .25s ease;
+    }
+    [data-theme="light"] .stat-card { background: rgba(180,60,60,0.14); border-color: rgba(140,10,40,0.2); }
+    .stat-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.2); }
+    .stat-card .label { color: var(--muted); font-size: .85rem; font-weight: 600; }
+    .stat-card .value { margin-top: 8px; font-size: 1.8rem; font-weight: 700; }
+    .stat-card .sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    /* BLOOD TYPE BARS */
+    .blood-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .blood-bar-card {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 12px;
+    }
+    [data-theme="light"] .blood-bar-card { background: rgba(180,60,60,0.12); border-color: rgba(140,10,40,0.2); }
+    .blood-bar-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 700; font-size: 0.95rem; }
+    .blood-bar-track { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+    .blood-bar-fill { height: 100%; border-radius: 999px; transition: width 0.9s ease; }
+    .blood-bar-fill.low { background: linear-gradient(90deg, #ff9f9f, #ffcfcf); }
+    .blood-bar-fill.med { background: linear-gradient(90deg, #ff6b35, #ffaa80); }
+    .blood-bar-fill.high { background: linear-gradient(90deg, var(--ok), #a8f0d8); }
+    .blood-bar-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    /* TABLE */
+    .table-wrap {
+      width: 100%; overflow-x: auto;
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+      background: rgba(14,21,37,0.65);
+    }
+    [data-theme="light"] .table-wrap { background: rgba(220,160,160,0.35); border-color: rgba(140,10,40,0.25); }
+    table { width: 100%; min-width: 600px; border-collapse: collapse; }
+    th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: .88rem; }
+    th { color: #ffd2d2; font-weight: 700; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.03); }
+    [data-theme="light"] th { color: #1a0005; font-weight: 800; background: rgba(180,60,60,0.12); }
+    [data-theme="light"] td { color: #1a0005; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.03); }
+    [data-theme="light"] tr:hover td { background: rgba(180,60,60,0.08); }
+    a { color: #ffd9df; text-decoration: none; }
+    a:hover { color: #ffffff; text-decoration: underline; }
+    [data-theme="light"] a { color: #8b0000; }
+    [data-theme="light"] a:hover { color: #1a0005; }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 0.75rem; font-weight: 700;
+    }
+    .badge-urgent { background: rgba(255,71,95,0.2); color: #ff8fa3; border: 1px solid rgba(255,71,95,0.3); }
+    .badge-normal { background: rgba(111,240,191,0.15); color: #6ff0bf; border: 1px solid rgba(111,240,191,0.25); }
+    .badge-pending { background: rgba(255,170,80,0.2); color: #ffaa50; border: 1px solid rgba(255,170,80,0.3); }
+    .badge-matched { background: rgba(111,240,191,0.15); color: #6ff0bf; border: 1px solid rgba(111,240,191,0.25); }
+    .badge-available { background: rgba(111,240,191,0.15); color: #6ff0bf; border: 1px solid rgba(111,240,191,0.25); }
+    .badge-unavailable { background: rgba(255,159,159,0.2); color: #ff9f9f; border: 1px solid rgba(255,159,159,0.3); }
+    [data-theme="light"] .badge-urgent { background: rgba(180,0,30,0.1); color: #8b0000; border-color: rgba(180,0,30,0.2); }
+    [data-theme="light"] .badge-normal { background: rgba(15,92,56,0.1); color: #0f5c38; border-color: rgba(15,92,56,0.2); }
+    [data-theme="light"] .badge-pending { background: rgba(180,100,0,0.1); color: #7a4000; border-color: rgba(180,100,0,0.2); }
+    [data-theme="light"] .badge-matched { background: rgba(15,92,56,0.1); color: #0f5c38; border-color: rgba(15,92,56,0.2); }
+    [data-theme="light"] .badge-available { background: rgba(15,92,56,0.1); color: #0f5c38; border-color: rgba(15,92,56,0.2); }
+    [data-theme="light"] .badge-unavailable { background: rgba(180,0,30,0.1); color: #8b0000; border-color: rgba(180,0,30,0.2); }
+
+    .empty-row td { text-align: center; color: var(--muted); padding: 24px; font-style: italic; }
+
+    .btn {
+      border: 1px solid rgba(180,40,60,0.65); border-radius: 10px; padding: 11px 16px; cursor: pointer;
+      background: linear-gradient(135deg, var(--primary), #b51738); color: white; font-weight: 600;
+      box-shadow: 0 0 8px rgba(160,30,50,0.45); transition: transform .15s ease, box-shadow .2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 0 14px rgba(180,40,60,0.65), 0 6px 18px rgba(60,5,15,0.5); }
+    .btn:disabled { opacity: .75; cursor: not-allowed; transform: none; }
+
+    .message { min-height: 20px; font-size: .88rem; margin-bottom: 10px; }
+    .message.success { color: var(--ok); }
+    .message.error { color: var(--error); }
+    .message.info { color: var(--muted); }
+
+    /* BACK TO TOP */
+    .back-to-top {
+      position: fixed; bottom: 24px; right: 24px; z-index: 99;
+      width: 42px; height: 42px; border-radius: 999px;
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      border: none; color: white; font-size: 1.1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 20px rgba(180,30,50,0.45);
+      opacity: 0; transform: translateY(12px); transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+    }
+    .back-to-top.visible { opacity: 1; transform: translateY(0); pointer-events: all; }
+    .back-to-top:hover { transform: translateY(-2px); }
+
+    /* ANIMATIONS */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes riseIn { from { opacity: 0; transform: translateY(18px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes spinY { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
+    @keyframes titleGlow {
+      0%, 100% { filter: drop-shadow(0 0 10px rgba(255,248,235,0.4)) drop-shadow(0 0 20px rgba(234,217,196,0.34)); }
+      50% { filter: drop-shadow(0 0 14px rgba(255,252,242,0.55)) drop-shadow(0 0 28px rgba(241,226,204,0.42)); }
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 980px) {
+      .stats-grid, .blood-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .container { width: 96vw; }
+      .stats-grid, .blood-grid { grid-template-columns: 1fr; }
+      table { min-width: 500px; }
+      .admin-hero-inner { flex-direction: column; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <a href="#" class="nav-brand">
+      <img src="./logo.png" alt="" class="nav-logo"/>
+      BloodOps
+      <span class="admin-badge">Admin</span>
+    </a>
+    <div class="nav-right">
+      <button class="refresh-btn" id="refreshBtn" onclick="refreshAll()">↻ Refresh</button>
+      <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <!-- ADMIN HERO -->
+    <div class="admin-hero">
+      <div class="admin-hero-inner">
+        <img src="./logo.png" class="admin-logo" alt="BloodOps" />
+        <div>
+          <h1>Admin Dashboard</h1>
+          <p>Live data from AWS DynamoDB — only you can see this</p>
+          <div class="last-updated" id="lastUpdated">Last updated: —</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATS ROW -->
+    <section class="section">
+      <h2>📊 Overview</h2>
+      <div id="statsMessage" class="message info">Loading dashboard...</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="label">Total Donors</div>
+          <div id="totalDonors" class="value"><div class="skeleton"></div></div>
+          <div class="sub">Registered in system</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Requests</div>
+          <div id="totalRequests" class="value"><div class="skeleton"></div></div>
+          <div class="sub">From hospitals</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Donations</div>
+          <div id="totalDonations" class="value"><div class="skeleton"></div></div>
+          <div class="sub">Completed donations</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Pending Requests</div>
+          <div id="pendingRequests" class="value"><div class="skeleton"></div></div>
+          <div class="sub">Awaiting match</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BLOOD TYPE AVAILABILITY -->
+    <section class="section">
+      <h2>🩸 Blood Type Availability</h2>
+      <div class="blood-grid" id="bloodGrid">
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>A+</span><span id="bAPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barAPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>A-</span><span id="bANeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barANeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>B+</span><span id="bBPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barBPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>B-</span><span id="bBNeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barBNeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>O+</span><span id="bOPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barOPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>O-</span><span id="bONeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barONeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>AB+</span><span id="bABPlus">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barABPlus" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+        <div class="blood-bar-card"><div class="blood-bar-top"><span>AB-</span><span id="bABNeg">0</span></div><div class="blood-bar-track"><div class="blood-bar-fill" id="barABNeg" style="width:0%"></div></div><div class="blood-bar-label">donors available</div></div>
+      </div>
+    </section>
+
+    <!-- RECORD DONATION -->
+    <section class="section">
+      <h2>✅ Record Completed Donation</h2>
+      <p style="color:var(--muted);font-size:0.88rem;margin-bottom:16px;">When a hospital calls to confirm a donation, record it here using the Donor ID and Request ID.</p>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+        <div class="field-group">
+          <label for="recordDonorId">Donor ID</label>
+          <input id="recordDonorId" type="text" placeholder="Paste Donor ID" />
+        </div>
+        <div class="field-group">
+          <label for="recordHospitalName">Hospital Name</label>
+          <input id="recordHospitalName" type="text" placeholder="Hospital name" />
+        </div>
+        <div class="field-group">
+          <label for="recordRequestId">Request ID (optional)</label>
+          <input id="recordRequestId" type="text" placeholder="Paste Request ID" />
+        </div>
+        <div class="field-group">
+          <label for="recordDate">Donation Date</label>
+          <input id="recordDate" type="date" />
+        </div>
+      </div>
+      <button class="btn" id="recordDonationBtn" onclick="recordDonation()" style="margin-top:8px;">Record Donation</button>
+      <div id="recordMessage" class="message" style="margin-top:10px;"></div>
+    </section>
+
+    <!-- PENDING REQUESTS TABLE -->
+    <section class="section">
+      <h2>🏥 Pending Requests</h2>
+      <div id="requestsMessage" class="message info">Loading...</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Request ID</th>
+              <th>Hospital Name</th>
+              <th>Blood Type</th>
+              <th>Quantity</th>
+              <th>Urgency</th>
+              <th>Timestamp</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="requestsTableBody">
+            <tr class="empty-row"><td colspan="7">Loading requests...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="section">
+      <h2>👤 All Donors</h2>
+      <div id="donorsMessage" class="message info">Loading...</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Donor ID</th>
+              <th>Name</th>
+              <th>Blood Type</th>
+              <th>Location</th>
+              <th>Phone</th>
+              <th>Availability</th>
+              <th>Last Donation</th>
+            </tr>
+          </thead>
+          <tbody id="donorsTableBody">
+            <tr class="empty-row"><td colspan="7">Loading donors...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DONATION HISTORY TABLE -->
+    <section class="section">
+      <h2>💉 Recent Donations</h2>
+      <div id="historyMessage" class="message info">Loading...</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>History ID</th>
+              <th>Donor ID</th>
+              <th>Hospital</th>
+              <th>Donation Date</th>
+              <th>Certificate</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr class="empty-row"><td colspan="5">Loading history...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- BACK TO TOP -->
+  <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+  <script>
+    const API_URL = 'https://pov9qy4ue5.execute-api.us-east-1.amazonaws.com/prod';
+    const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+
+    const bloodTypeEls = {
+      'A+': document.getElementById('bAPlus'), 'A-': document.getElementById('bANeg'),
+      'B+': document.getElementById('bBPlus'), 'B-': document.getElementById('bBNeg'),
+      'O+': document.getElementById('bOPlus'), 'O-': document.getElementById('bONeg'),
+      'AB+': document.getElementById('bABPlus'), 'AB-': document.getElementById('bABNeg')
+    };
+    const barEls = {
+      'A+': document.getElementById('barAPlus'), 'A-': document.getElementById('barANeg'),
+      'B+': document.getElementById('barBPlus'), 'B-': document.getElementById('barBNeg'),
+      'O+': document.getElementById('barOPlus'), 'O-': document.getElementById('barONeg'),
+      'AB+': document.getElementById('barABPlus'), 'AB-': document.getElementById('barABNeg')
+    };
+
+    // THEME
+    const themeToggle = document.getElementById('themeToggle');
+    const savedTheme = localStorage.getItem('bloodops-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    themeToggle.textContent = savedTheme === 'dark' ? '🌙' : '☀️';
+    themeToggle.addEventListener('click', () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      themeToggle.textContent = next === 'dark' ? '🌙' : '☀️';
+      localStorage.setItem('bloodops-theme', next);
+    });
+
+    // BACK TO TOP
+    const backToTop = document.getElementById('backToTop');
+    window.addEventListener('scroll', () => backToTop.classList.toggle('visible', window.scrollY > 300));
+
+    // HELPERS
+    function setMessage(el, text, type) { el.textContent = text || ''; el.className = `message ${type || ''}`.trim(); }
+
+    function animateCount(el, target) {
+      let start = 0; const dur = 800;
+      el.innerHTML = '';
+      const step = (ts) => {
+        if (!start) start = ts;
+        const p = Math.min((ts - start) / dur, 1);
+        el.textContent = Math.floor(p * target);
+        if (p < 1) requestAnimationFrame(step); else el.textContent = target;
+      };
+      requestAnimationFrame(step);
+    }
+
+    function badgeUrgency(u) {
+      const v = (u || '').toLowerCase();
+      return `<span class="badge badge-${v}">${u || '-'}</span>`;
+    }
+    function badgeStatus(s) {
+      const v = (s || '').toLowerCase();
+      return `<span class="badge badge-${v}">${s || '-'}</span>`;
+    }
+    function badgeAvailability(a) {
+      const v = (a || '').toLowerCase();
+      return `<span class="badge badge-${v}">${a || '-'}</span>`;
+    }
+
+    function shortId(id) {
+      if (!id) return '-';
+      return `<span title="${id}">${id.substring(0,8)}...</span>`;
+    }
+
+    function formatDate(d) {
+      if (!d) return '-';
+      try { return new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }); } catch { return d; }
+    }
+
+    // FETCH ADMIN STATS
+    async function fetchAdminStats() {
+      const msg = document.getElementById('statsMessage');
+      setMessage(msg, 'Fetching live stats...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/admin`);
+        if (!res.ok) throw new Error('Failed to fetch admin stats.');
+        const data = await res.json();
+
+        const totalDonors = data.total_donors ?? data.totalDonors ?? 0;
+        const totalRequests = data.total_requests ?? data.totalRequests ?? 0;
+        const totalDonations = data.total_donations ?? data.totalDonations ?? 0;
+        const pendingReqs = data.pending_requests ?? data.pendingRequests ?? [];
+        const bloodTypeCounts = data.blood_type_availability ?? data.blood_type_counts ?? data.bloodTypeCounts ?? {};
+
+        animateCount(document.getElementById('totalDonors'), totalDonors);
+        animateCount(document.getElementById('totalRequests'), totalRequests);
+        animateCount(document.getElementById('totalDonations'), totalDonations);
+        animateCount(document.getElementById('pendingRequests'), Array.isArray(pendingReqs) ? pendingReqs.length : pendingReqs);
+
+        const maxVal = Math.max(...bloodTypes.map(t => Number(bloodTypeCounts[t] || 0)), 1);
+        bloodTypes.forEach(type => {
+          const count = Number(bloodTypeCounts[type] || 0);
+          bloodTypeEls[type].textContent = count;
+          const pct = Math.round((count / maxVal) * 100);
+          const bar = barEls[type];
+          bar.style.width = pct + '%';
+          bar.className = 'blood-bar-fill ' + (pct < 25 ? 'low' : pct < 60 ? 'med' : 'high');
+        });
+
+        document.getElementById('lastUpdated').textContent = `Last updated: ${new Date().toLocaleTimeString('en-IN')}`;
+        setMessage(msg, `Dashboard loaded successfully.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading stats.', 'error');
+      }
+    }
+
+    // FETCH PENDING REQUESTS
+    async function fetchRequests() {
+      const msg = document.getElementById('requestsMessage');
+      const tbody = document.getElementById('requestsTableBody');
+      setMessage(msg, 'Loading requests...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/requests?status=pending`);
+        if (!res.ok) throw new Error('Failed to fetch requests.');
+        const data = await res.json();
+        const requests = Array.isArray(data) ? data : (data.Items || data.requests || []);
+        if (requests.length === 0) {
+          tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No pending requests found</td></tr>';
+          setMessage(msg, 'No pending requests.', 'info');
+          return;
+        }
+        tbody.innerHTML = requests.map(r => `
+          <tr>
+            <td>${shortId(r.RequestID ?? r.request_id)}</td>
+            <td>${r.HospitalName ?? r.hospital_name ?? '-'}</td>
+            <td><strong>${r.BloodType ?? r.blood_type ?? '-'}</strong></td>
+            <td>${r.Quantity ?? r.quantity ?? '-'} units</td>
+            <td>${badgeUrgency(r.Urgency ?? r.urgency)}</td>
+            <td>${formatDate(r.Timestamp ?? r.timestamp ?? r.CreatedAt)}</td>
+            <td>${badgeStatus(r.Status ?? r.status ?? 'pending')}</td>
+          </tr>`).join('');
+        setMessage(msg, `${requests.length} pending request(s) found.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading requests.', 'error');
+        document.getElementById('requestsTableBody').innerHTML = '<tr class="empty-row"><td colspan="7">Failed to load requests</td></tr>';
+      }
+    }
+
+    // FETCH ALL DONORS
+    async function fetchDonors() {
+      const msg = document.getElementById('donorsMessage');
+      const tbody = document.getElementById('donorsTableBody');
+      setMessage(msg, 'Loading donors...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/donors`);
+        if (!res.ok) throw new Error('Failed to fetch donors.');
+        const data = await res.json();
+        const donors = Array.isArray(data) ? data : (data.Items || data.donors || []);
+        if (donors.length === 0) {
+          tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No donors registered yet</td></tr>';
+          setMessage(msg, 'No donors found.', 'info');
+          return;
+        }
+        tbody.innerHTML = donors.map(d => `
+          <tr>
+            <td>${shortId(d.DonorID ?? d.donor_id)}</td>
+            <td>${d.Name ?? d.name ?? '-'}</td>
+            <td><strong>${d.BloodType ?? d.blood_type ?? '-'}</strong></td>
+            <td>${d.Location ?? d.location ?? '-'}</td>
+            <td>${d.Phone ?? d.phone ?? '-'}</td>
+            <td>${badgeAvailability(d.Availability ?? d.availability)}</td>
+            <td>${formatDate(d.LastDonationDate ?? d.last_donation_date)}</td>
+          </tr>`).join('');
+        setMessage(msg, `${donors.length} donor(s) registered.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading donors.', 'error');
+        document.getElementById('donorsTableBody').innerHTML = '<tr class="empty-row"><td colspan="7">Failed to load donors</td></tr>';
+      }
+    }
+
+    // FETCH DONATION HISTORY
+    async function fetchHistory() {
+      const msg = document.getElementById('historyMessage');
+      const tbody = document.getElementById('historyTableBody');
+      setMessage(msg, 'Loading donation history...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/history`);
+        if (!res.ok) throw new Error('Failed to fetch history.');
+        const data = await res.json();
+        const history = Array.isArray(data) ? data : (data.Items || data.history || []);
+        if (history.length === 0) {
+          tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No donations recorded yet</td></tr>';
+          setMessage(msg, 'No donation history found.', 'info');
+          return;
+        }
+        tbody.innerHTML = history.map(h => {
+          const certUrl = h.CertificateURL ?? h.certificate_url ?? h.certificateUrl ?? '';
+          const histId = h.HistoryID ?? h.history_id ?? '';
+          const donorId = h.DonorID ?? h.donor_id ?? '';
+          const certCell = certUrl
+            ? `<a href="${certUrl}" target="_blank" rel="noopener">Download PDF</a>`
+            : `<button onclick="adminGenerateCert('${histId}','${donorId}')" style="background:linear-gradient(135deg,#ff475f,#b51738);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600;">Generate PDF</button>`;
+          return `<tr>
+            <td>${shortId(h.HistoryID ?? h.history_id)}</td>
+            <td>${shortId(h.DonorID ?? h.donor_id)}</td>
+            <td>${h.HospitalName ?? h.hospital_name ?? '-'}</td>
+            <td>${formatDate(h.DonationDate ?? h.donation_date)}</td>
+            <td>${certCell}</td>
+          </tr>`;
+        }).join('');
+        setMessage(msg, `${history.length} donation record(s) found.`, 'success');
+      } catch (err) {
+        setMessage(msg, err.message || 'Error loading history.', 'error');
+        document.getElementById('historyTableBody').innerHTML = '<tr class="empty-row"><td colspan="5">Failed to load history</td></tr>';
+      }
+    }
+
+    // RECORD DONATION
+    async function recordDonation() {
+      const btn = document.getElementById('recordDonationBtn');
+      const msg = document.getElementById('recordMessage');
+      const donorId = document.getElementById('recordDonorId').value.trim();
+      const hospitalName = document.getElementById('recordHospitalName').value.trim();
+      const date = document.getElementById('recordDate').value;
+
+      if (!donorId || !hospitalName) {
+        setMessage(msg, 'Donor ID and Hospital Name are required!', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Recording...';
+      setMessage(msg, '', '');
+
+      try {
+        const res = await fetch(`${API_URL}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            donor_id: donorId,
+            hospital_name: hospitalName,
+            donation_date: date || new Date().toISOString(),
+            request_id: document.getElementById('recordRequestId').value.trim()
+          })
+        });
+        if (!res.ok) throw new Error('Failed to record donation.');
+        const data = await res.json();
+        setMessage(msg, `✅ Donation recorded successfully! History ID: ${data.HistoryID ?? data.history_id ?? 'generated'}`, 'success');
+        document.getElementById('recordDonorId').value = '';
+        document.getElementById('recordHospitalName').value = '';
+        document.getElementById('recordRequestId').value = '';
+        document.getElementById('recordDate').value = '';
+        refreshAll();
+      } catch (err) {
+        setMessage(msg, err.message || 'Error recording donation.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Record Donation';
+      }
+    }
+
+    // GENERATE CERTIFICATE FROM ADMIN
+    async function adminGenerateCert(historyId, donorId) {
+      try {
+        const res = await fetch(`${API_URL}/certificate?donor_id=${encodeURIComponent(donorId)}&history_id=${encodeURIComponent(historyId)}`);
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        if (data.certificate_url) {
+          window.open(data.certificate_url, '_blank');
+          setTimeout(() => fetchHistory(), 1500);
+        }
+      } catch (err) {
+        alert('Failed to generate certificate. Please try again.');
+      }
+    }
+
+    // REFRESH ALL
+    async function refreshAll() {
+      const btn = document.getElementById('refreshBtn');
+      btn.classList.add('spinning');
+      btn.disabled = true;
+      await Promise.all([fetchAdminStats(), fetchRequests(), fetchDonors(), fetchHistory()]);
+      btn.classList.remove('spinning');
+      btn.disabled = false;
+    }
+
+    // INIT
+    refreshAll();
+    setInterval(refreshAll, 30000);
+  </script>
+</body>
+</html>
+
+==================== frontend/index.html ====================
+
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BloodOps</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,500&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --bg: #0c0000;
+      --panel: rgba(32, 6, 8, 0.8);
+      --panel-solid: #2a0709;
+      --card: rgba(255, 255, 255, 0.045);
+      --text: #fff4f4;
+      --muted: #f5c8cd;
+      --primary: #ff475f;
+      --primary-soft: rgba(255, 71, 95, 0.22);
+      --ok: #6ff0bf;
+      --error: #ff9f9f;
+      --ring: rgba(255, 225, 225, 0.16);
+      --shadow: 0 20px 42px rgba(17, 0, 0, 0.45);
+      --radius: 16px;
+      --nav-h: 60px;
+    }
+
+    [data-theme="light"] {
+      --bg: #f9f0f0;
+      --panel: rgba(245, 220, 220, 0.98);
+      --panel-solid: #f0cccc;
+      --card: rgba(180, 60, 60, 0.12);
+      --text: #1a0005;
+      --muted: #5a0018;
+      --primary: #c01030;
+      --primary-soft: rgba(192, 16, 48, 0.18);
+      --ok: #0f5c38;
+      --error: #a02020;
+      --ring: rgba(140, 10, 40, 0.32);
+      --shadow: 0 20px 42px rgba(140, 10, 40, 0.2);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: Manrope, Segoe UI, Arial, sans-serif;
+      color: var(--text);
+      background:
+        linear-gradient(145deg, rgba(0,0,0,0.88) 10%, transparent 10%, transparent 35%, rgba(0,0,0,0.9) 35%, rgba(0,0,0,0.9) 56%, transparent 56%, transparent 78%, rgba(0,0,0,0.9) 78%),
+        repeating-linear-gradient(to right, rgba(255,25,40,0.03) 0px, rgba(255,25,40,0.7) 2px, rgba(255,25,40,0.16) 4px, rgba(0,0,0,0.35) 10px, rgba(255,30,47,0.04) 16px),
+        radial-gradient(circle at 82% 46%, rgba(255,0,38,0.45) 0%, rgba(255,0,38,0.04) 34%, transparent 58%),
+        radial-gradient(circle at 27% 22%, rgba(255,0,38,0.3) 0%, transparent 43%),
+        linear-gradient(160deg, #1a0002 0%, #0c0000 55%, #080000 100%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    [data-theme="light"] body {
+      background: linear-gradient(160deg, #fff0f0 0%, #fff5f5 55%, #fffafa 100%);
+    }
+
+    /* NAVBAR */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0;
+      height: var(--nav-h); z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(12,0,0,0.82);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--ring);
+    }
+    [data-theme="light"] .navbar { background: rgba(230,180,180,0.96); border-color: rgba(140,10,40,0.3); }
+
+    .nav-logo {
+      width: 42px; height: 42px; vertical-align: middle;
+      mix-blend-mode: screen;
+      filter: drop-shadow(0 0 6px rgba(255,60,70,0.7));
+      margin-right: 8px;
+      animation: spinY 3s linear infinite;
+    }
+
+    .nav-brand {
+      font-family: Fraunces, serif; font-size: 1.25rem; font-weight: 700;
+      color: var(--text); text-decoration: none;
+    }
+
+    .nav-links { display: flex; align-items: center; gap: 4px; }
+
+    .nav-link {
+      background: none; border: none; color: var(--muted);
+      font: inherit; font-size: 0.86rem; font-weight: 600;
+      padding: 6px 11px; border-radius: 999px; cursor: pointer;
+      text-decoration: none; transition: color 0.2s, background 0.2s;
+    }
+    .nav-link:hover { color: var(--text); background: var(--primary-soft); }
+
+    .nav-right { display: flex; align-items: center; gap: 8px; }
+
+    .theme-toggle {
+      background: var(--card); border: 1px solid var(--ring); border-radius: 999px;
+      width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 1rem; color: var(--text); transition: background 0.2s;
+    }
+    .theme-toggle:hover { background: var(--primary-soft); }
+
+    .share-btn {
+      background: var(--card); border: 1px solid var(--ring); border-radius: 999px;
+      padding: 6px 13px; font: inherit; font-size: 0.82rem; font-weight: 600;
+      color: var(--muted); cursor: pointer; transition: background 0.2s, color 0.2s;
+    }
+    .share-btn:hover { background: var(--primary-soft); color: var(--text); }
+
+    /* CONTAINER */
+    .container {
+      width: min(1160px, 92vw); margin: 0 auto;
+      padding: calc(var(--nav-h) + 28px) 0 80px;
+      position: relative; z-index: 1;
+    }
+
+    /* HERO */
+    .hero {
+      text-align: center; padding: 48px 20px 38px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.11), rgba(255,255,255,0.03));
+      border: 1px solid var(--ring); border-radius: 24px;
+      box-shadow: var(--shadow); backdrop-filter: blur(12px);
+      animation: riseIn 0.7s ease;
+    }
+    .hero-brand { display: flex; flex-direction: column; align-items: center; }
+    .logo-img {
+      width: 210px; height: 210px; display: block;
+      mix-blend-mode: screen; filter: drop-shadow(0 0 10px rgba(255,60,70,0.5));
+      animation: spinY 3s linear infinite;
+    }
+    @keyframes spinY { 0% { transform: rotateY(0deg); } 100% { transform: rotateY(360deg); } }
+
+    .hero h1 {
+      margin: -30px 0 0;
+      font-family: Fraunces, serif; font-size: clamp(2.1rem, 4.2vw, 3.5rem);
+      letter-spacing: -0.02em; font-weight: 700; line-height: 1.08;
+      background: linear-gradient(180deg, #fffef7 0%, #f7f0e4 38%, #ead9c4 72%, #dcc5a8 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      animation: titleGlow 2.8s ease-in-out infinite;
+    }
+    .hero-quote {
+      margin: 18px auto 0; max-width: 480px;
+      font-family: Fraunces, serif; font-style: italic; font-weight: 400;
+      font-size: clamp(1.05rem, 1.8vw, 1.28rem); line-height: 1.55;
+      color: transparent;
+      background: linear-gradient(135deg, #ffd6d6 0%, #ffb3b3 40%, #ff8fa3 70%, #ffd6d6 100%);
+      -webkit-background-clip: text; background-clip: text;
+      filter: drop-shadow(0 0 8px rgba(255,100,120,0.3));
+    }
+    .quote-mark { font-size: 1.5em; line-height: 0; vertical-align: -0.25em; opacity: 0.7; font-style: normal; }
+
+    /* SECTION */
+    .section {
+      margin-top: 24px; background: var(--panel); border: 1px solid var(--ring);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px;
+      backdrop-filter: blur(6px); animation: fadeIn 0.8s ease;
+    }
+    .section h2 { margin: 0 0 16px; font-size: 1.25rem; font-weight: 700; }
+    .section-anchor { scroll-margin-top: calc(var(--nav-h) + 12px); }
+
+    /* SKELETON */
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 75%);
+      background-size: 200% 100%; animation: shimmer 1.4s infinite;
+      border-radius: 6px; height: 1.55rem; width: 60%; margin-top: 6px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* STATS */
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .stat-card {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 14px; transition: transform .25s ease, border-color .25s ease;
+    }
+    .stat-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.2); }
+    .stat-card .label { color: var(--muted); font-size: .88rem; }
+    .stat-card .value { margin-top: 6px; font-size: 1.55rem; font-weight: 700; }
+
+    /* BLOOD PILLS */
+    .blood-pills { margin-top: 14px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .pill {
+      background: var(--panel-solid); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+      font-weight: 600; font-size: .9rem;
+    }
+    .pill-top { display: flex; align-items: center; justify-content: space-between; }
+    .pill-bar-track { height: 4px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+    .pill-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--primary), #ff8fa3); transition: width 0.8s ease; }
+    .pill-bar-fill.low { background: linear-gradient(90deg, #ff9f9f, #ffcfcf); }
+    .pill-bar-fill.med { background: linear-gradient(90deg, #ff6b35, #ffaa80); }
+    .pill-bar-fill.high { background: linear-gradient(90deg, var(--ok), #a8f0d8); }
+
+    /* TABS */
+    .tabs {
+      display: inline-flex; gap: 8px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 999px; padding: 6px; margin-bottom: 16px;
+    }
+    .tab-btn {
+      border: 0; color: var(--text); background: transparent; border-radius: 999px;
+      padding: 10px 18px; cursor: pointer; font-weight: 600; transition: all .25s ease; font: inherit;
+    }
+    .tab-btn.active { background: linear-gradient(135deg, var(--primary), #b51738); box-shadow: 0 8px 20px rgba(230,57,70,0.45); }
+    .panel { display: none; }
+    .panel.active { display: block; animation: fadeIn .35s ease; }
+
+    /* FORMS */
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .field-group { margin-bottom: 12px; }
+    label { display: block; margin-bottom: 6px; font-size: .9rem; color: var(--muted); }
+    input, select, button { font: inherit; }
+    input, select {
+      width: 100%; padding: 11px 12px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.14); background: rgba(10,15,30,0.75);
+      color: var(--text); outline: none;
+    }
+    [data-theme="light"] input, [data-theme="light"] select { background: rgba(240,210,210,0.9); border-color: rgba(140,10,40,0.3); color: #1a0005; }
+    input:focus, select:focus { border-color: rgba(230,57,70,0.75); box-shadow: 0 0 0 4px var(--primary-soft); }
+
+    .btn {
+      border: 1px solid rgba(180,40,60,0.65); border-radius: 10px; padding: 11px 16px; cursor: pointer;
+      background: linear-gradient(135deg, var(--primary), #b51738); color: white; font-weight: 600;
+      box-shadow: 0 0 8px rgba(160,30,50,0.45); transition: transform .15s ease, box-shadow .2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 0 14px rgba(180,40,60,0.65), 0 6px 18px rgba(60,5,15,0.5); }
+    .btn:disabled { opacity: .75; cursor: not-allowed; transform: none; }
+
+    .btn-outline {
+      background: transparent; border: 1px solid var(--ring); border-radius: 10px;
+      padding: 8px 14px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 0.88rem;
+      transition: all 0.2s; font: inherit; font-size: 0.88rem; font-weight: 600;
+    }
+    .btn-outline:hover { background: var(--primary-soft); color: var(--text); border-color: var(--primary); }
+
+    .inline-action { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin: 10px 0 12px; }
+
+    .message { min-height: 22px; font-size: .92rem; margin-top: 8px; }
+    .message.success { color: var(--ok); }
+    .message.error { color: var(--error); }
+    .message.info { color: var(--muted); }
+
+    .table-wrap { width: 100%; overflow-x: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; background: rgba(14,21,37,0.65); }
+    [data-theme="light"] .table-wrap { background: rgba(255,240,240,0.5); }
+
+    [data-theme="light"] .hero h1 {
+      background: linear-gradient(160deg, #6b0000 0%, #a01020 35%, #c8192e 60%, #800010 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      filter: drop-shadow(0 1px 0 rgba(255,255,255,0.4)) drop-shadow(0 2px 8px rgba(120,0,20,0.3)) drop-shadow(0 4px 14px rgba(0,0,0,0.15));
+      animation: titleGlowLight 2.8s ease-in-out infinite;
+    }
+    [data-theme="light"] .hero-quote {
+      background: linear-gradient(135deg, #800020 0%, #b01030 50%, #800020 100%);
+      -webkit-background-clip: text; background-clip: text;
+      filter: drop-shadow(0 1px 4px rgba(140,0,30,0.3));
+    }
+    [data-theme="light"] .hero {
+      background: linear-gradient(145deg, rgba(240,200,200,0.85), rgba(230,180,180,0.65));
+      border-color: rgba(140,10,40,0.3);
+    }
+    [data-theme="light"] .stat-card { background: rgba(180,60,60,0.14); border-color: rgba(140,10,40,0.2); }
+    [data-theme="light"] .pill { background: #e8b8b8; border-color: rgba(140,10,40,0.2); }
+    [data-theme="light"] .impact-number { background: linear-gradient(135deg, #8b0000, #c01030); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    [data-theme="light"] .how-card { background: rgba(180,60,60,0.12); border-color: rgba(140,10,40,0.2); }
+    [data-theme="light"] .impact-card { background: rgba(180,60,60,0.12); border-color: rgba(140,10,40,0.2); }
+    [data-theme="light"] th { color: #1a0005; font-weight: 800; opacity: 1; }
+    [data-theme="light"] td { color: #1a0005; }
+    [data-theme="light"] .table-wrap { background: rgba(220,160,160,0.35); border-color: rgba(140,10,40,0.25); }
+    [data-theme="light"] .compat-types { color: #0a4a2a; font-weight: 700; }
+    [data-theme="light"] .compat-table th { color: #1a0005; font-weight: 800; opacity: 1; }
+    [data-theme="light"] .compat-table td { color: #1a0005; }
+    [data-theme="light"] a { color: #8b0000; }
+    [data-theme="light"] a:hover { color: #1a0005; }
+    [data-theme="light"] .nav-logo { mix-blend-mode: normal; filter: none; }
+    [data-theme="light"] .logo-img { mix-blend-mode: normal; filter: drop-shadow(0 0 8px rgba(160,0,30,0.2)); }
+    @keyframes titleGlowLight {
+      0%, 100% { filter: drop-shadow(0 1px 0 rgba(255,255,255,0.7)) drop-shadow(0 2px 10px rgba(160,10,30,0.22)) drop-shadow(0 4px 14px rgba(0,0,0,0.08)); }
+      50% { filter: drop-shadow(0 1px 0 rgba(255,255,255,0.9)) drop-shadow(0 2px 16px rgba(180,20,40,0.32)) drop-shadow(0 4px 20px rgba(0,0,0,0.1)); }
+    }
+
+    table { width: 100%; min-width: 700px; border-collapse: collapse; }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: .92rem; }
+    th { color: #ffd2d2; font-weight: 700; }
+    a { color: #ffd9df; }
+    a:hover { color: #ffffff; }
+
+    /* HOW IT WORKS */
+    .how-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .how-card {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 20px; text-align: center; transition: transform 0.25s ease;
+    }
+    .how-card:hover { transform: translateY(-3px); }
+    .how-step {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border-radius: 999px;
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      color: white; font-size: 0.8rem; font-weight: 700; margin-bottom: 10px;
+    }
+    .how-icon { font-size: 2.2rem; margin-bottom: 8px; display: block; }
+    .how-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+    .how-card p { font-size: 0.88rem; color: var(--muted); line-height: 1.55; }
+
+    /* IMPACT */
+    .impact-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .impact-card { background: var(--card); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 20px; text-align: center; }
+    .impact-number {
+      font-family: Fraunces, serif; font-size: 2.4rem; font-weight: 700;
+      background: linear-gradient(135deg, #ffd6d6, #ff8fa3);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .impact-label { font-size: 0.88rem; color: var(--muted); margin-top: 4px; }
+
+    /* FAQ */
+    .faq-item { border-bottom: 1px solid var(--ring); }
+    .faq-item:last-child { border-bottom: none; }
+    .faq-q {
+      width: 100%; background: none; border: none; color: var(--text); font: inherit;
+      font-weight: 600; font-size: 0.95rem; text-align: left; padding: 14px 0; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .faq-q:hover { color: var(--primary); }
+    .faq-arrow { font-size: 0.8rem; transition: transform 0.3s ease; flex-shrink: 0; color: var(--muted); }
+    .faq-item.open .faq-arrow { transform: rotate(180deg); }
+    .faq-a { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease; color: var(--muted); font-size: 0.9rem; line-height: 1.65; }
+    .faq-item.open .faq-a { max-height: 200px; padding-bottom: 14px; }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.78); z-index: 200;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--panel-solid); border: 1px solid var(--ring); border-radius: 20px;
+      padding: 28px; max-width: 480px; width: 100%;
+      box-shadow: 0 30px 60px rgba(0,0,0,0.5); position: relative;
+      transform: scale(0.95) translateY(10px); transition: transform 0.25s ease;
+    }
+    .modal-overlay.open .modal { transform: scale(1) translateY(0); }
+    .modal-close {
+      position: absolute; top: 14px; right: 16px;
+      background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; line-height: 1;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-icon { font-size: 3rem; text-align: center; display: block; margin-bottom: 12px; }
+    .modal h3 { font-family: Fraunces, serif; font-size: 1.4rem; font-weight: 700; text-align: center; margin-bottom: 8px; }
+    .modal p { text-align: center; color: var(--muted); font-size: 0.92rem; margin-bottom: 16px; line-height: 1.55; }
+
+    .id-copy-row {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.06); border: 1px solid var(--ring);
+      border-radius: 10px; padding: 10px 14px; margin-bottom: 16px;
+    }
+    .id-copy-row span { flex: 1; font-weight: 700; font-size: 0.95rem; word-break: break-all; }
+    .copy-btn {
+      background: var(--primary-soft); border: none; border-radius: 8px;
+      padding: 6px 12px; color: var(--text); font: inherit; font-size: 0.82rem;
+      font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 0.2s;
+    }
+    .copy-btn:hover { background: var(--primary); color: white; }
+
+    /* COMPAT TABLE */
+    .compat-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-top: 12px; }
+    .compat-table th, .compat-table td { padding: 8px 10px; border-bottom: 1px solid var(--ring); text-align: left; }
+    .compat-table th { color: #ffd2d2; font-size: 0.82rem; }
+    .compat-types { color: var(--ok); font-size: 0.82rem; }
+
+    /* SHARE */
+    .share-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+    .share-option {
+      background: var(--card); border: 1px solid var(--ring); border-radius: 12px;
+      padding: 14px 10px; text-align: center; cursor: pointer; text-decoration: none;
+      color: var(--text); font-size: 0.84rem; font-weight: 600;
+      transition: background 0.2s, transform 0.2s; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
+    .share-option:hover { background: var(--primary-soft); transform: translateY(-2px); }
+    .share-icon { font-size: 1.5rem; }
+
+    /* BACK TO TOP */
+    .back-to-top {
+      position: fixed; bottom: 24px; right: 24px; z-index: 99;
+      width: 42px; height: 42px; border-radius: 999px;
+      background: linear-gradient(135deg, var(--primary), #b51738);
+      border: none; color: white; font-size: 1.1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 20px rgba(180,30,50,0.45);
+      opacity: 0; transform: translateY(12px); transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+    }
+    .back-to-top.visible { opacity: 1; transform: translateY(0); pointer-events: all; }
+    .back-to-top:hover { transform: translateY(-2px); }
+
+    /* ANIMATIONS */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes riseIn { from { opacity: 0; transform: translateY(18px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes titleGlow {
+      0%, 100% { filter: drop-shadow(0 0 10px rgba(255,248,235,0.4)) drop-shadow(0 0 20px rgba(234,217,196,0.34)) drop-shadow(0 4px 14px rgba(0,0,0,0.38)); }
+      50% { filter: drop-shadow(0 0 14px rgba(255,252,242,0.55)) drop-shadow(0 0 28px rgba(241,226,204,0.42)) drop-shadow(0 4px 14px rgba(0,0,0,0.38)); }
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 980px) {
+      .stats-grid, .blood-pills, .grid-2, .how-grid, .impact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .container { width: 94vw; }
+      .stats-grid, .blood-pills, .grid-2, .how-grid, .impact-grid { grid-template-columns: 1fr; }
+      .inline-action { grid-template-columns: 1fr; }
+      table { min-width: 580px; }
+      .logo-img { width: 150px; height: 150px; }
+      .nav-links { display: none; }
+      .share-options { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <a href="#hero" class="nav-brand"><img src="./logo.png" alt="" class="nav-logo"/> BloodOps</a>
+    <div class="nav-links">
+      <a href="#stats" class="nav-link">Live Stats</a>
+      <a href="#action" class="nav-link">Donate / Request</a>
+      <a href="#how" class="nav-link">How It Works</a>
+      <a href="#impact" class="nav-link">Impact</a>
+      <a href="#faq" class="nav-link">FAQ</a>
+    </div>
+    <div class="nav-right">
+      <button class="share-btn" onclick="openShareModal()">↗ Share</button>
+      <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <!-- HERO -->
+    <section class="hero section-anchor" id="hero">
+      <div class="hero-brand">
+        <img class="logo-img" src="./logo.png" width="210" height="210" alt="BloodOps logo" decoding="async" />
+        <h1>BloodOps</h1>
+        <p class="hero-quote"><span class="quote-mark">&ldquo;</span>Every drop counts. Every second matters.<span class="quote-mark">&rdquo;</span></p>
+      </div>
+    </section>
+
+    <!-- LIVE STATS -->
+    <section class="section section-anchor" id="stats">
+      <h2>Live Stats</h2>
+      <div id="statsMessage" class="message info"></div>
+      <div class="stats-grid">
+        <article class="stat-card"><div class="label">Total Donors</div><div id="totalDonors" class="value"><div class="skeleton"></div></div></article>
+        <article class="stat-card"><div class="label">Total Requests</div><div id="totalRequests" class="value"><div class="skeleton"></div></div></article>
+        <article class="stat-card"><div class="label">Total Donations</div><div id="totalDonations" class="value"><div class="skeleton"></div></div></article>
+        <article class="stat-card"><div class="label">Blood Types Available</div><div id="bloodTypesAvailable" class="value"><div class="skeleton"></div></div></article>
+      </div>
+      <div class="blood-pills">
+        <div class="pill"><div class="pill-top"><span>A+</span><span id="bAPlus">0</span></div><div class="pill-bar-track"><div class="pill-bar-fill" id="barAPlus" style="width:0%"></div></div></div>
+        <div class="pill"><div class="pill-top"><span>A-</span><span id="bANeg">0</span></div><div class="pill-bar-track"><div class="pill-bar-fill" id="barANeg" style="width:0%"></div></div></div>
+        <div class="pill"><div class="pill-top"><span>B+</span><span id="bBPlus">0</span></div><div class="pill-bar-track"><div class="pill-bar-fill" id="barBPlus" style="width:0%"></div></div></div>
+        <div class="pill"><div class="pill-top"><span>B-</span><span id="bBNeg">0</span></div><div class="pill-bar-track"><div class="pill-bar-fill" id="barBNeg" style="width:0%"></div></div></div>
+        <div class="pill"><div class="pill-top"><span>O+</span><span id="bOPlus">0</span></div><div class="pill-bar-track"><div class="pill-bar-fill" id="barOPlus" style="width:0%"></div></div></div>
+        <div class="pill"><div class="pill-top"><span>O-</span><span id="bONeg">0</span></div><div class="pill-bar-track"><div class="pill-bar-fill" id="barONeg" style="width:0%"></div></div></div>
+        <div class="pill"><div class="pill-top"><span>AB+</span><span id="bABPlus">0</span></div><div class="pill-bar-track"><div class="pill-bar-fill" id="barABPlus" style="width:0%"></div></div></div>
+        <div class="pill"><div class="pill-top"><span>AB-</span><span id="bABNeg">0</span></div><div class="pill-bar-track"><div class="pill-bar-fill" id="barABNeg" style="width:0%"></div></div></div>
+      </div>
+      <button class="btn-outline" onclick="openCompatModal()" style="margin-top:14px;">🩸 Blood Type Compatibility Chart</button>
+    </section>
+
+    <!-- TABS -->
+    <section class="section section-anchor" id="action">
+      <div class="tabs">
+        <button id="donorTabBtn" class="tab-btn active" type="button">Donor</button>
+        <button id="hospitalTabBtn" class="tab-btn" type="button">Hospital</button>
+      </div>
+
+      <div id="donorPanel" class="panel active">
+        <h2>Register as Donor</h2>
+        <form id="donorForm">
+          <div class="grid-2">
+            <div class="field-group"><label for="donorName">Name</label><input id="donorName" required type="text" /></div>
+            <div class="field-group"><label for="donorBloodType">Blood Type</label>
+              <select id="donorBloodType" required>
+                <option value="">Select blood type</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+              </select>
+            </div>
+            <div class="field-group"><label for="donorLocation">Location</label><input id="donorLocation" required type="text" /></div>
+            <div class="field-group"><label for="donorPhone">Phone Number</label><input id="donorPhone" required type="text" /></div>
+            <div class="field-group"><label for="donorEmail">Email Address</label><input id="donorEmail" required type="email" placeholder="you@email.com" /></div>
+            <div class="field-group"><label for="donorAvailability">Availability</label>
+              <select id="donorAvailability" required>
+                <option value="">Select availability</option><option>Available</option><option>Unavailable</option>
+              </select>
+            </div>
+            <div class="field-group"><label for="donorLastDonationDate">Last Donation Date</label><input id="donorLastDonationDate" required type="date" /></div>
+          </div>
+          <button id="donorSubmitBtn" class="btn" type="submit">Register Donor</button>
+        </form>
+        <div id="donorFormMessage" class="message"></div>
+
+        <h2 style="margin-top:24px;">Check Donation History</h2>
+        <div class="inline-action">
+          <input id="historyDonorId" type="text" placeholder="Enter Donor ID" />
+          <button id="historySearchBtn" class="btn" type="button">Search</button>
+        </div>
+        <div id="historyMessage" class="message"></div>
+        <div id="historyTableWrap" class="table-wrap" style="display:none;">
+          <table><thead><tr><th>Date</th><th>Hospital Name</th><th>Certificate</th></tr></thead><tbody id="historyTableBody"></tbody></table>
+        </div>
+      </div>
+
+      <div id="hospitalPanel" class="panel">
+        <h2>Blood Request Form</h2>
+        <form id="requestForm">
+          <div class="grid-2">
+            <div class="field-group"><label for="hospitalName">Hospital Name</label><input id="hospitalName" required type="text" /></div>
+            <div class="field-group"><label for="requestBloodType">Blood Type Needed</label>
+              <select id="requestBloodType" required>
+                <option value="">Select blood type</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+              </select>
+            </div>
+            <div class="field-group"><label for="requestQuantity">Quantity (units)</label><input id="requestQuantity" required min="1" type="number" /></div>
+            <div class="field-group"><label for="requestUrgency">Urgency</label>
+              <select id="requestUrgency" required>
+                <option value="">Select urgency</option><option>Normal</option><option>Urgent</option>
+              </select>
+            </div>
+          </div>
+          <button id="requestSubmitBtn" class="btn" type="submit">Submit Request</button>
+        </form>
+        <div id="requestFormMessage" class="message"></div>
+
+        <h2 style="margin-top:24px;">Find Matching Donors</h2>
+        <div class="inline-action">
+          <input id="matchRequestId" type="text" placeholder="Enter Request ID" />
+          <button id="matchSearchBtn" class="btn" type="button">Search</button>
+        </div>
+        <div id="matchMessage" class="message"></div>
+        <div id="matchCount" class="message info"></div>
+        <div id="matchTableWrap" class="table-wrap" style="display:none;">
+          <table><thead><tr><th>Donor Name</th><th>Blood Type</th><th>Location</th><th>Phone</th><th>Availability</th></tr></thead><tbody id="matchTableBody"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="section section-anchor" id="how">
+      <h2>How It Works</h2>
+      <div class="how-grid">
+        <div class="how-card">
+          <div class="how-step">1</div>
+          <span class="how-icon">📋</span>
+          <h3>Register as Donor</h3>
+          <p>Fill in your details, blood type, and availability. You'll receive a unique Donor ID to track your contributions.</p>
+        </div>
+        <div class="how-card">
+          <div class="how-step">2</div>
+          <span class="how-icon">🔍</span>
+          <h3>Smart Matching</h3>
+          <p>When a hospital submits a request, BloodOps automatically finds compatible donors based on blood type and availability.</p>
+        </div>
+        <div class="how-card">
+          <div class="how-step">3</div>
+          <span class="how-icon">❤️</span>
+          <h3>Donate & Save Lives</h3>
+          <p>Head to the hospital, complete your donation, and receive a certificate. Your impact is tracked in real time.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- IMPACT -->
+    <section class="section section-anchor" id="impact">
+      <h2>Our Impact</h2>
+      <div class="impact-grid">
+        <div class="impact-card"><div class="impact-number" id="impactDonors">—</div><div class="impact-label">Registered Donors</div></div>
+        <div class="impact-card"><div class="impact-number" id="impactDonations">—</div><div class="impact-label">Successful Donations</div></div>
+        <div class="impact-card"><div class="impact-number" id="impactLives">—</div><div class="impact-label">Lives Impacted</div></div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section section-anchor" id="faq">
+      <h2>Frequently Asked Questions</h2>
+      <div class="faq-item">
+        <button class="faq-q">Who can donate blood? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Most healthy adults aged 18–65 weighing at least 50kg can donate. You should not have donated in the last 3 months and must be free from infections at the time of donation.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">How often can I donate? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Whole blood can be donated every 3 months (90 days). Your last donation date is tracked in BloodOps to keep you safe.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">What is a Donor ID? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Your Donor ID is a unique identifier assigned when you register. Use it to check your donation history, download certificates, and track your contributions over time.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">How does blood type matching work? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">BloodOps uses ABO and Rh compatibility rules to match donors to hospital requests. O- is the universal donor, while AB+ can receive from all types. Click the compatibility chart button for a full overview.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">Is my personal information safe? <span class="faq-arrow">▼</span></button>
+        <div class="faq-a">Yes. BloodOps stores only the minimum data required to facilitate donations. Your phone number is only shared with verified hospitals when a match is confirmed.</div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- BACK TO TOP -->
+  <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+  <!-- CONFIRMATION MODAL -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal('confirmModal')">✕</button>
+      <span class="modal-icon" id="modalIcon">✅</span>
+      <h3 id="modalTitle">Success!</h3>
+      <p id="modalMessage"></p>
+      <div class="id-copy-row" id="idCopyRow" style="display:none;">
+        <span id="modalIdValue"></span>
+        <button class="copy-btn" onclick="copyId()">Copy ID</button>
+      </div>
+      <button class="btn" style="width:100%;margin-top:4px;" onclick="closeModal('confirmModal')">Done</button>
+    </div>
+  </div>
+
+  <!-- COMPATIBILITY MODAL -->
+  <div class="modal-overlay" id="compatModal">
+    <div class="modal" style="max-width:560px;">
+      <button class="modal-close" onclick="closeModal('compatModal')">✕</button>
+      <h3 style="margin-bottom:4px;">🩸 Blood Type Compatibility</h3>
+      <p>Who can donate to whom</p>
+      <div style="overflow-x:auto;">
+        <table class="compat-table">
+          <thead><tr><th>Blood Type</th><th>Can Donate To</th><th>Can Receive From</th></tr></thead>
+          <tbody>
+            <tr><td><strong>A+</strong></td><td class="compat-types">A+, AB+</td><td class="compat-types">A+, A-, O+, O-</td></tr>
+            <tr><td><strong>A-</strong></td><td class="compat-types">A+, A-, AB+, AB-</td><td class="compat-types">A-, O-</td></tr>
+            <tr><td><strong>B+</strong></td><td class="compat-types">B+, AB+</td><td class="compat-types">B+, B-, O+, O-</td></tr>
+            <tr><td><strong>B-</strong></td><td class="compat-types">B+, B-, AB+, AB-</td><td class="compat-types">B-, O-</td></tr>
+            <tr><td><strong>O+</strong></td><td class="compat-types">A+, B+, O+, AB+</td><td class="compat-types">O+, O-</td></tr>
+            <tr><td><strong>O-</strong></td><td class="compat-types">Everyone ✓</td><td class="compat-types">O- only</td></tr>
+            <tr><td><strong>AB+</strong></td><td class="compat-types">AB+ only</td><td class="compat-types">Everyone ✓</td></tr>
+            <tr><td><strong>AB-</strong></td><td class="compat-types">AB+, AB-</td><td class="compat-types">A-, B-, O-, AB-</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHARE MODAL -->
+  <div class="modal-overlay" id="shareModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal('shareModal')">✕</button>
+      <span class="modal-icon">↗</span>
+      <h3>Share BloodOps</h3>
+      <p>Help spread the word and save more lives.</p>
+      <div class="share-options">
+        <a class="share-option" id="shareWhatsApp" href="#" target="_blank" rel="noopener"><span class="share-icon">💬</span>WhatsApp</a>
+        <a class="share-option" id="shareTwitter" href="#" target="_blank" rel="noopener"><span class="share-icon">🐦</span>X / Twitter</a>
+        <a class="share-option" id="shareFacebook" href="#" target="_blank" rel="noopener"><span class="share-icon">👥</span>Facebook</a>
+        <a class="share-option" id="shareEmail" href="#"><span class="share-icon">📧</span>Email</a>
+        <a class="share-option" style="cursor:pointer;" onclick="copyLink()"><span class="share-icon">🔗</span><span id="copyLinkLabel">Copy Link</span></a>
+        <a class="share-option" style="cursor:pointer;" onclick="nativeShare()"><span class="share-icon">📲</span>More</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'https://pov9qy4ue5.execute-api.us-east-1.amazonaws.com/prod';
+    const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+
+    // THEME
+    const themeToggle = document.getElementById('themeToggle');
+    const savedTheme = localStorage.getItem('bloodops-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    themeToggle.textContent = savedTheme === 'dark' ? '🌙' : '☀️';
+    themeToggle.addEventListener('click', () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      themeToggle.textContent = next === 'dark' ? '🌙' : '☀️';
+      localStorage.setItem('bloodops-theme', next);
+    });
+
+    // BACK TO TOP
+    const backToTop = document.getElementById('backToTop');
+    window.addEventListener('scroll', () => backToTop.classList.toggle('visible', window.scrollY > 300));
+
+    // MODALS
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+    document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+
+    function showConfirmModal(icon, title, message, idLabel, idValue) {
+      document.getElementById('modalIcon').textContent = icon;
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalMessage').textContent = message;
+      const idRow = document.getElementById('idCopyRow');
+      if (idValue) {
+        document.getElementById('modalIdValue').textContent = `${idLabel}: ${idValue}`;
+        idRow.style.display = 'flex';
+        idRow._id = idValue;
+      } else {
+        idRow.style.display = 'none';
+      }
+      openModal('confirmModal');
+    }
+
+    function copyId() {
+      const idRow = document.getElementById('idCopyRow');
+      navigator.clipboard.writeText(idRow._id).then(() => {
+        const btn = idRow.querySelector('.copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy ID', 2000);
+      });
+    }
+
+    function openCompatModal() { openModal('compatModal'); }
+
+    // SHARE
+    function openShareModal() {
+      const url = encodeURIComponent(window.location.href);
+      const text = encodeURIComponent('BloodOps — Every drop counts. Every second matters. Register as a donor today!');
+      document.getElementById('shareWhatsApp').href = `https://wa.me/?text=${text}%20${url}`;
+      document.getElementById('shareTwitter').href = `https://twitter.com/intent/tweet?text=${text}&url=${url}`;
+      document.getElementById('shareFacebook').href = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
+      document.getElementById('shareEmail').href = `mailto:?subject=BloodOps&body=${text}%20${window.location.href}`;
+      openModal('shareModal');
+    }
+    function copyLink() {
+      navigator.clipboard.writeText(window.location.href).then(() => {
+        const el = document.getElementById('copyLinkLabel');
+        el.textContent = 'Copied!';
+        setTimeout(() => el.textContent = 'Copy Link', 2000);
+      });
+    }
+    function nativeShare() {
+      if (navigator.share) navigator.share({ title: 'BloodOps', text: 'Every drop counts. Every second matters.', url: window.location.href });
+    }
+
+    // HELPERS
+    function setMessage(el, text, type) { el.textContent = text || ''; el.className = `message ${type || ''}`.trim(); }
+    function setLoadingButton(btn, loading, loadTxt, normTxt) { btn.disabled = loading; btn.textContent = loading ? loadTxt : normTxt; }
+
+    // FIX 1 — added blood_type_availability as first fallback
+    function normalizeAdminData(data) {
+      return {
+        totalDonors: data.total_donors ?? data.totalDonors ?? 0,
+        totalRequests: data.total_requests ?? data.totalRequests ?? 0,
+        totalDonations: data.total_donations ?? data.totalDonations ?? 0,
+        bloodTypeCounts: data.blood_type_availability ?? data.blood_type_counts ?? data.bloodTypeCounts ?? {}
+      };
+    }
+
+    function animateCount(el, target) {
+      let start = 0; const dur = 800;
+      const step = (ts) => {
+        if (!start) start = ts;
+        const p = Math.min((ts - start) / dur, 1);
+        el.textContent = Math.floor(p * target);
+        if (p < 1) requestAnimationFrame(step); else el.textContent = target;
+      };
+      requestAnimationFrame(step);
+    }
+
+    // STATS
+    const bloodTypeEls = { 'A+': document.getElementById('bAPlus'), 'A-': document.getElementById('bANeg'), 'B+': document.getElementById('bBPlus'), 'B-': document.getElementById('bBNeg'), 'O+': document.getElementById('bOPlus'), 'O-': document.getElementById('bONeg'), 'AB+': document.getElementById('bABPlus'), 'AB-': document.getElementById('bABNeg') };
+    const barEls = { 'A+': document.getElementById('barAPlus'), 'A-': document.getElementById('barANeg'), 'B+': document.getElementById('barBPlus'), 'B-': document.getElementById('barBNeg'), 'O+': document.getElementById('barOPlus'), 'O-': document.getElementById('barONeg'), 'AB+': document.getElementById('barABPlus'), 'AB-': document.getElementById('barABNeg') };
+
+    async function fetchLiveStats() {
+      const statsMessage = document.getElementById('statsMessage');
+      setMessage(statsMessage, 'Loading live stats...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/admin`);
+        if (!res.ok) throw new Error('Failed to fetch live stats.');
+        const raw = await res.json();
+        const data = normalizeAdminData(raw);
+
+        ['totalDonors','totalRequests','totalDonations','bloodTypesAvailable'].forEach(id => { document.getElementById(id).innerHTML = ''; });
+
+        animateCount(document.getElementById('totalDonors'), data.totalDonors);
+        animateCount(document.getElementById('totalRequests'), data.totalRequests);
+        animateCount(document.getElementById('totalDonations'), data.totalDonations);
+        const available = bloodTypes.filter(t => Number(data.bloodTypeCounts[t] || 0) > 0).length;
+        animateCount(document.getElementById('bloodTypesAvailable'), available);
+
+        animateCount(document.getElementById('impactDonors'), data.totalDonors);
+        animateCount(document.getElementById('impactDonations'), data.totalDonations);
+        animateCount(document.getElementById('impactLives'), Math.floor(data.totalDonations * 3));
+
+        const maxVal = Math.max(...bloodTypes.map(t => Number(data.bloodTypeCounts[t] || 0)), 1);
+        bloodTypes.forEach(type => {
+          const count = Number(data.bloodTypeCounts[type] || 0);
+          bloodTypeEls[type].textContent = count;
+          const pct = Math.round((count / maxVal) * 100);
+          const bar = barEls[type];
+          bar.style.width = pct + '%';
+          bar.className = 'pill-bar-fill ' + (pct < 25 ? 'low' : pct < 60 ? 'med' : 'high');
+        });
+
+        setMessage(statsMessage, 'Live stats updated.', 'success');
+      } catch (err) {
+        setMessage(document.getElementById('statsMessage'), err.message || 'Unable to load stats.', 'error');
+      }
+    }
+
+    // TABS
+    document.getElementById('donorTabBtn').addEventListener('click', () => {
+      document.getElementById('donorTabBtn').classList.add('active'); document.getElementById('hospitalTabBtn').classList.remove('active');
+      document.getElementById('donorPanel').classList.add('active'); document.getElementById('hospitalPanel').classList.remove('active');
+    });
+    document.getElementById('hospitalTabBtn').addEventListener('click', () => {
+      document.getElementById('hospitalTabBtn').classList.add('active'); document.getElementById('donorTabBtn').classList.remove('active');
+      document.getElementById('hospitalPanel').classList.add('active'); document.getElementById('donorPanel').classList.remove('active');
+    });
+
+    // DONOR FORM
+    document.getElementById('donorForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('donorSubmitBtn');
+      const msg = document.getElementById('donorFormMessage');
+      setLoadingButton(btn, true, 'Submitting...', 'Register Donor');
+      setMessage(msg, '', '');
+      const payload = {
+        name: document.getElementById('donorName').value.trim(),
+        blood_type: document.getElementById('donorBloodType').value,
+        location: document.getElementById('donorLocation').value.trim(),
+        phone: document.getElementById('donorPhone').value.trim(),
+        email: document.getElementById('donorEmail').value.trim(),
+        availability: document.getElementById('donorAvailability').value,
+        last_donation_date: document.getElementById('donorLastDonationDate').value
+      };
+      try {
+        const res = await fetch(`${API_URL}/donors`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!res.ok) throw new Error('Failed to register donor.');
+        const data = await res.json();
+        // FIX 2 — added data.DonorID as first fallback
+        const donorId = data.DonorID ?? data.donor_id ?? data.donorId ?? data.id ?? 'generated';
+        document.getElementById('donorForm').reset();
+        fetchLiveStats();
+        showConfirmModal('🎉', 'Donor Registered!', `Thank you, ${payload.name}! Save your Donor ID below to check your donation history.`, 'Donor ID', donorId);
+      } catch (err) {
+        setMessage(msg, err.message || 'Error registering donor.', 'error');
+      } finally {
+        setLoadingButton(btn, false, 'Submitting...', 'Register Donor');
+      }
+    });
+
+    // HISTORY
+    document.getElementById('historySearchBtn').addEventListener('click', async () => {
+      const donorId = document.getElementById('historyDonorId').value.trim();
+      const wrap = document.getElementById('historyTableWrap');
+      const body = document.getElementById('historyTableBody');
+      const msg = document.getElementById('historyMessage');
+      wrap.style.display = 'none'; body.innerHTML = '';
+      if (!donorId) { setMessage(msg, 'Please enter a donor ID.', 'error'); return; }
+      setMessage(msg, 'Loading donation history...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/history?donor_id=${encodeURIComponent(donorId)}`);
+        if (!res.ok) throw new Error('Failed to fetch donation history.');
+        const data = await res.json();
+        // FIX 5 — added data.Items as first fallback
+        const history = Array.isArray(data) ? data : (data.Items || data.history || []);
+        if (history.length === 0) { setMessage(msg, 'No donation history found', 'info'); return; }
+        body.innerHTML = history.map(item => {
+          const date = item.date ?? item.DonationDate ?? item.donation_date ?? '-';
+          const hospital = item.HospitalName ?? item.hospital_name ?? item.hospital ?? '-';
+          const certUrl = item.CertificateURL ?? item.certificate_url ?? item.certificateUrl ?? '';
+          const histId = item.HistoryID ?? item.history_id ?? '';
+          const certCell = certUrl
+            ? `<a href="${certUrl}" target="_blank" rel="noopener">⬇ Download</a>`
+            : `<button onclick="generateCert('${histId}','${donorId}')" style="background:linear-gradient(135deg,#ff475f,#b51738);border:none;color:white;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600;">Generate PDF</button>`;
+          return `<tr><td>${date}</td><td>${hospital}</td><td>${certCell}</td></tr>`;
+        }).join('');
+        wrap.style.display = 'block';
+        setMessage(msg, `Found ${history.length} record(s).`, 'success');
+      } catch (err) { setMessage(msg, err.message || 'Error loading history.', 'error'); }
+    });
+
+    // REQUEST FORM
+    document.getElementById('requestForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('requestSubmitBtn');
+      const msg = document.getElementById('requestFormMessage');
+      setLoadingButton(btn, true, 'Submitting...', 'Submit Request');
+      setMessage(msg, '', '');
+      const payload = {
+        hospital_name: document.getElementById('hospitalName').value.trim(),
+        blood_type: document.getElementById('requestBloodType').value,
+        quantity: Number(document.getElementById('requestQuantity').value),
+        urgency: document.getElementById('requestUrgency').value
+      };
+      try {
+        const res = await fetch(`${API_URL}/requests`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!res.ok) throw new Error('Failed to submit request.');
+        const data = await res.json();
+        // FIX 3 — added data.RequestID as first fallback
+        const requestId = data.RequestID ?? data.request_id ?? data.requestId ?? data.id ?? 'generated';
+        document.getElementById('requestForm').reset();
+        fetchLiveStats();
+        showConfirmModal('🏥', 'Request Submitted!', `Blood request from ${payload.hospital_name} submitted. Use the Request ID to find matching donors.`, 'Request ID', requestId);
+      } catch (err) {
+        setMessage(msg, err.message || 'Error submitting request.', 'error');
+      } finally {
+        setLoadingButton(btn, false, 'Submitting...', 'Submit Request');
+      }
+    });
+
+    // MATCH SEARCH
+    document.getElementById('matchSearchBtn').addEventListener('click', async () => {
+      const requestId = document.getElementById('matchRequestId').value.trim();
+      const body = document.getElementById('matchTableBody');
+      const wrap = document.getElementById('matchTableWrap');
+      const msg = document.getElementById('matchMessage');
+      const count = document.getElementById('matchCount');
+      body.innerHTML = ''; wrap.style.display = 'none'; count.textContent = '';
+      if (!requestId) { setMessage(msg, 'Please enter a request ID.', 'error'); return; }
+      setMessage(msg, 'Finding matching donors...', 'info');
+      try {
+        const res = await fetch(`${API_URL}/match?request_id=${encodeURIComponent(requestId)}`);
+        if (!res.ok) throw new Error('Failed to fetch matching donors.');
+        const data = await res.json();
+        // FIX 4 — added data.matching_donors as first fallback
+        const donors = Array.isArray(data) ? data : (data.matching_donors || data.matches || data.donors || []);
+        if (donors.length === 0) { setMessage(msg, 'No matching donors found', 'info'); return; }
+        body.innerHTML = donors.map(d => `<tr><td>${d.Name ?? d.name ?? d.donor_name ?? '-'}</td><td>${d.BloodType ?? d.blood_type ?? d.bloodType ?? '-'}</td><td>${d.Location ?? d.location ?? '-'}</td><td>${d.Phone ?? d.phone ?? '-'}</td><td>${d.Availability ?? d.availability ?? '-'}</td></tr>`).join('');
+        count.textContent = `Total matches: ${donors.length}`;
+        wrap.style.display = 'block';
+        setMessage(msg, 'Matching donors loaded.', 'success');
+      } catch (err) { setMessage(msg, err.message || 'Error finding donors.', 'error'); }
+    });
+
+    // GENERATE CERTIFICATE
+    async function generateCert(historyId, donorId) {
+      try {
+        const res = await fetch(`${API_URL}/certificate?donor_id=${encodeURIComponent(donorId)}&history_id=${encodeURIComponent(historyId)}`);
+        if (!res.ok) throw new Error('Failed to generate certificate.');
+        const data = await res.json();
+        if (data.certificate_url) {
+          window.open(data.certificate_url, '_blank');
+          setTimeout(() => document.getElementById('historySearchBtn').click(), 1500);
+        }
+      } catch (err) {
+        alert('Failed to generate certificate. Please try again.');
+      }
+    }
+
+    // FAQ
+    document.querySelectorAll('.faq-q').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.faq-item');
+        const wasOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open'));
+        if (!wasOpen) item.classList.add('open');
+      });
+    });
+
+    fetchLiveStats();
+    setInterval(fetchLiveStats, 30000);
+  </script>
+</body>
+</html>
+
+==================== frontend/style.css ====================
+
+/* main stylesheet */
+
+
+==================== .github/workflows/deploy.yml ====================
+
+name: BloodOps CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy BloodOps to AWS
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Install OpenTofu
+        run: |
+          curl -fsSL https://get.opentofu.org/install-opentofu.sh | sudo bash -s -- --install-method standalone
+          tofu version
+
+      - name: Build reportlab Lambda Layer
+        run: |
+          mkdir -p terraform/layer/python
+          pip install reportlab -t terraform/layer/python/
+          cd terraform/layer
+          zip -r ../reportlab_layer.zip python/
+          cd ../..
+
+      - name: Create zips directory
+        run: mkdir -p terraform/zips
+
+      - name: Tofu Init
+        working-directory: terraform
+        run: tofu init
+
+      - name: Import existing resources into state
+        working-directory: terraform
+        run: |
+          echo "Importing IAM roles..."
+          tofu import aws_iam_role.lambda_role bloodops-lambda-role 2>/dev/null || true
+          tofu import aws_iam_role.eventbridge_role bloodops-eventbridge-role 2>/dev/null || true
+
+          echo "Importing IAM policies..."
+          tofu import aws_iam_role_policy.lambda_policy bloodops-lambda-role:bloodops-lambda-policy 2>/dev/null || true
+          tofu import aws_iam_role_policy.eventbridge_policy bloodops-eventbridge-role:bloodops-eventbridge-policy 2>/dev/null || true
+
+          echo "Importing Lambda functions..."
+          tofu import aws_lambda_function.donor_function bloodops-donor-function 2>/dev/null || true
+          tofu import aws_lambda_function.request_function bloodops-request-function 2>/dev/null || true
+          tofu import aws_lambda_function.match_function bloodops-match-function 2>/dev/null || true
+          tofu import aws_lambda_function.history_function bloodops-history-function 2>/dev/null || true
+          tofu import aws_lambda_function.certificate_function bloodops-certificate-function 2>/dev/null || true
+          tofu import aws_lambda_function.reminder_function bloodops-reminder-function 2>/dev/null || true
+          tofu import aws_lambda_function.admin_function bloodops-admin-function 2>/dev/null || true
+
+          echo "Importing CloudWatch log groups..."
+          tofu import aws_cloudwatch_log_group.donor_logs /aws/lambda/bloodops-donor-function 2>/dev/null || true
+          tofu import aws_cloudwatch_log_group.request_logs /aws/lambda/bloodops-request-function 2>/dev/null || true
+          tofu import aws_cloudwatch_log_group.match_logs /aws/lambda/bloodops-match-function 2>/dev/null || true
+          tofu import aws_cloudwatch_log_group.history_logs /aws/lambda/bloodops-history-function 2>/dev/null || true
+          tofu import aws_cloudwatch_log_group.certificate_logs /aws/lambda/bloodops-certificate-function 2>/dev/null || true
+          tofu import aws_cloudwatch_log_group.reminder_logs /aws/lambda/bloodops-reminder-function 2>/dev/null || true
+          tofu import aws_cloudwatch_log_group.admin_logs /aws/lambda/bloodops-admin-function 2>/dev/null || true
+
+          echo "Importing SNS topics..."
+          tofu import aws_sns_topic.urgent_alerts arn:aws:sns:us-east-1:065837433541:urgent-blood-alerts 2>/dev/null || true
+          tofu import aws_sns_topic.reminder_alerts arn:aws:sns:us-east-1:065837433541:reminder-alerts 2>/dev/null || true
+          tofu import aws_sns_topic.admin_notifications arn:aws:sns:us-east-1:065837433541:admin-notifications 2>/dev/null || true
+
+          echo "Importing API Gateway..."
+          tofu import aws_api_gateway_rest_api.bloodops_api tt2d1k2i00 2>/dev/null || true
+
+          echo "Importing EventBridge schedule..."
+          tofu import aws_scheduler_schedule.daily_reminder bloodops-daily-reminder 2>/dev/null || true
+
+          echo "Importing Lambda permissions..."
+          tofu import aws_lambda_permission.donor_api_permission bloodops-donor-function/AllowAPIGatewayInvokeDonor 2>/dev/null || true
+          tofu import aws_lambda_permission.request_api_permission bloodops-request-function/AllowAPIGatewayInvokeRequest 2>/dev/null || true
+          tofu import aws_lambda_permission.match_api_permission bloodops-match-function/AllowAPIGatewayInvokeMatch 2>/dev/null || true
+          tofu import aws_lambda_permission.history_api_permission bloodops-history-function/AllowAPIGatewayInvokeHistory 2>/dev/null || true
+          tofu import aws_lambda_permission.certificate_api_permission bloodops-certificate-function/AllowAPIGatewayInvokeCertificate 2>/dev/null || true
+          tofu import aws_lambda_permission.admin_api_permission bloodops-admin-function/AllowAPIGatewayInvoke 2>/dev/null || true
+
+          echo "Importing CloudWatch alarms..."
+          tofu import aws_cloudwatch_metric_alarm.donor_function_errors bloodops-donor-function-errors 2>/dev/null || true
+          tofu import aws_cloudwatch_metric_alarm.request_function_errors bloodops-request-function-errors 2>/dev/null || true
+          tofu import aws_cloudwatch_metric_alarm.match_function_errors bloodops-match-function-errors 2>/dev/null || true
+
+          echo "All imports done!"
+
+      - name: Tofu Plan
+        working-directory: terraform
+        run: tofu plan
+
+      - name: Tofu Apply
+        working-directory: terraform
+        run: tofu apply -auto-approve
+
+      - name: Deploy frontend to S3
+        run: |
+          aws s3 sync frontend/ s3://bloodops-frontend-bucket/ \
+            --exclude "admin.html" \
+            --exclude "admin-secret-bloodops-2026.html" \
+            --delete
+
+==================== terraform/main.tf ====================
+
+terraform {
+  backend "s3" {
+    bucket = "bloodops-frontend-bucket"
+    key    = "terraform/state/terraform.tfstate"
+    region = "us-east-1"
+  }
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "= 5.50.0"
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "= 2.4.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+# ============================================================
+# VARIABLES
+# ============================================================
+
+variable "account_id" {
+  default = "065837433541"
+}
+
+variable "region" {
+  default = "us-east-1"
+}
+
+variable "frontend_bucket" {
+  default = "bloodops-frontend-bucket"
+}
+
+variable "certificates_bucket" {
+  default = "bloodops-certificates-bucket"
+}
+
+# ============================================================
+# IAM ROLE FOR LAMBDA
+# ============================================================
+
+resource "aws_iam_role" "lambda_role" {
+  name = "bloodops-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  lifecycle {
+    ignore_changes = [assume_role_policy]
+  }
+}
+
+resource "aws_iam_role_policy" "lambda_policy" {
+  name = "bloodops-lambda-policy"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:Scan",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query"
+        ]
+        Resource = [
+          "arn:aws:dynamodb:${var.region}:${var.account_id}:table/Donors",
+          "arn:aws:dynamodb:${var.region}:${var.account_id}:table/Requests",
+          "arn:aws:dynamodb:${var.region}:${var.account_id}:table/Hospitals",
+          "arn:aws:dynamodb:${var.region}:${var.account_id}:table/DonationHistory"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::${var.certificates_bucket}",
+          "arn:aws:s3:::${var.certificates_bucket}/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = ["sns:Publish"]
+        Resource = [
+          aws_sns_topic.urgent_alerts.arn,
+          aws_sns_topic.reminder_alerts.arn,
+          aws_sns_topic.admin_notifications.arn
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
+        Action = ["ses:SendEmail", "ses:SendRawEmail"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# ============================================================
+# SNS TOPICS
+# ============================================================
+
+resource "aws_sns_topic" "urgent_alerts" {
+  name = "urgent-blood-alerts"
+  lifecycle { ignore_changes = all }
+}
+
+resource "aws_sns_topic" "reminder_alerts" {
+  name = "reminder-alerts"
+  lifecycle { ignore_changes = all }
+}
+
+resource "aws_sns_topic" "admin_notifications" {
+  name = "admin-notifications"
+  lifecycle { ignore_changes = all }
+}
+
+# ============================================================
+# LAMBDA LAYERS
+# ============================================================
+
+resource "aws_lambda_layer_version" "reportlab_layer" {
+  filename            = "reportlab_layer.zip"
+  layer_name          = "reportlab-layer"
+  compatible_runtimes = ["python3.11"]
+  description         = "ReportLab library for PDF generation"
+  lifecycle { ignore_changes = all }
+}
+
+# ============================================================
+# LAMBDA FUNCTIONS
+# ============================================================
+
+data "archive_file" "donor_zip" {
+  type        = "zip"
+  source_file = "${path.module}/../backend/donor_function.py"
+  output_path = "${path.module}/zips/donor_function.zip"
+}
+
+resource "aws_lambda_function" "donor_function" {
+  filename         = data.archive_file.donor_zip.output_path
+  function_name    = "bloodops-donor-function"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "donor_function.lambda_handler"
+  runtime          = "python3.11"
+  source_code_hash = data.archive_file.donor_zip.output_base64sha256
+  timeout          = 30
+  environment {
+    variables = { REGION = var.region }
+  }
+  lifecycle { ignore_changes = [layers] }
+}
+
+data "archive_file" "request_zip" {
+  type        = "zip"
+  source_file = "${path.module}/../backend/request_function.py"
+  output_path = "${path.module}/zips/request_function.zip"
+}
+
+resource "aws_lambda_function" "request_function" {
+  filename         = data.archive_file.request_zip.output_path
+  function_name    = "bloodops-request-function"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "request_function.lambda_handler"
+  runtime          = "python3.11"
+  source_code_hash = data.archive_file.request_zip.output_base64sha256
+  timeout          = 30
+  environment {
+    variables = { REGION = var.region }
+  }
+  lifecycle { ignore_changes = [layers] }
+}
+
+data "archive_file" "match_zip" {
+  type        = "zip"
+  source_file = "${path.module}/../backend/match_function.py"
+  output_path = "${path.module}/zips/match_function.zip"
+}
+
+resource "aws_lambda_function" "match_function" {
+  filename         = data.archive_file.match_zip.output_path
+  function_name    = "bloodops-match-function"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "match_function.lambda_handler"
+  runtime          = "python3.11"
+  source_code_hash = data.archive_file.match_zip.output_base64sha256
+  timeout          = 30
+  environment {
+    variables = {
+      REGION            = var.region
+      URGENT_ALERTS_ARN = aws_sns_topic.urgent_alerts.arn
+    }
+  }
+  lifecycle { ignore_changes = [layers] }
+}
+
+data "archive_file" "history_zip" {
+  type        = "zip"
+  source_file = "${path.module}/../backend/history_function.py"
+  output_path = "${path.module}/zips/history_function.zip"
+}
+
+resource "aws_lambda_function" "history_function" {
+  filename         = data.archive_file.history_zip.output_path
+  function_name    = "bloodops-history-function"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "history_function.lambda_handler"
+  runtime          = "python3.11"
+  source_code_hash = data.archive_file.history_zip.output_base64sha256
+  timeout          = 30
+  environment {
+    variables = { REGION = var.region }
+  }
+  lifecycle { ignore_changes = [layers] }
+}
+
+data "archive_file" "certificate_zip" {
+  type        = "zip"
+  source_file = "${path.module}/../backend/certificate_function.py"
+  output_path = "${path.module}/zips/certificate_function.zip"
+}
+
+resource "aws_lambda_function" "certificate_function" {
+  filename         = data.archive_file.certificate_zip.output_path
+  function_name    = "bloodops-certificate-function"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "certificate_function.lambda_handler"
+  runtime          = "python3.11"
+  source_code_hash = data.archive_file.certificate_zip.output_base64sha256
+  timeout          = 60
+  layers           = [aws_lambda_layer_version.reportlab_layer.arn]
+  environment {
+    variables = {
+      REGION      = var.region
+      BUCKET_NAME = var.certificates_bucket
+    }
+  }
+  lifecycle { ignore_changes = [layers] }
+}
+
+data "archive_file" "reminder_zip" {
+  type        = "zip"
+  source_file = "${path.module}/../backend/reminder_function.py"
+  output_path = "${path.module}/zips/reminder_function.zip"
+}
+
+resource "aws_lambda_function" "reminder_function" {
+  filename         = data.archive_file.reminder_zip.output_path
+  function_name    = "bloodops-reminder-function"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "reminder_function.lambda_handler"
+  runtime          = "python3.11"
+  source_code_hash = data.archive_file.reminder_zip.output_base64sha256
+  timeout          = 60
+  environment {
+    variables = {
+      REGION             = var.region
+      REMINDER_TOPIC_ARN = aws_sns_topic.reminder_alerts.arn
+    }
+  }
+  lifecycle { ignore_changes = [layers] }
+}
+
+data "archive_file" "admin_zip" {
+  type        = "zip"
+  source_file = "${path.module}/../backend/admin_function.py"
+  output_path = "${path.module}/zips/admin_function.zip"
+}
+
+resource "aws_lambda_function" "admin_function" {
+  filename         = data.archive_file.admin_zip.output_path
+  function_name    = "bloodops-admin-function"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "admin_function.lambda_handler"
+  runtime          = "python3.11"
+  source_code_hash = data.archive_file.admin_zip.output_base64sha256
+  timeout          = 30
+  environment {
+    variables = { REGION = var.region }
+  }
+  lifecycle { ignore_changes = [layers] }
+}
+
+# ============================================================
+# EVENTBRIDGE SCHEDULER
+# ============================================================
+
+resource "aws_iam_role" "eventbridge_role" {
+  name = "bloodops-eventbridge-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "scheduler.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  lifecycle { ignore_changes = all }
+}
+
+resource "aws_iam_role_policy" "eventbridge_policy" {
+  name = "bloodops-eventbridge-policy"
+  role = aws_iam_role.eventbridge_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "lambda:InvokeFunction"
+        Resource = aws_lambda_function.reminder_function.arn
+      }
+    ]
+  })
+}
+
+# ============================================================
+# CLOUDWATCH ALARMS
+# ============================================================
+
+resource "aws_cloudwatch_metric_alarm" "donor_function_errors" {
+  alarm_name          = "bloodops-donor-function-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "5"
+  alarm_description   = "Donor function error rate too high"
+  dimensions          = { FunctionName = aws_lambda_function.donor_function.function_name }
+  alarm_actions       = [aws_sns_topic.admin_notifications.arn]
+  lifecycle { ignore_changes = all }
+}
+
+resource "aws_cloudwatch_metric_alarm" "request_function_errors" {
+  alarm_name          = "bloodops-request-function-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "5"
+  alarm_description   = "Request function error rate too high"
+  dimensions          = { FunctionName = aws_lambda_function.request_function.function_name }
+  alarm_actions       = [aws_sns_topic.admin_notifications.arn]
+  lifecycle { ignore_changes = all }
+}
+
+resource "aws_cloudwatch_metric_alarm" "match_function_errors" {
+  alarm_name          = "bloodops-match-function-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "5"
+  alarm_description   = "Match function error rate too high"
+  dimensions          = { FunctionName = aws_lambda_function.match_function.function_name }
+  alarm_actions       = [aws_sns_topic.admin_notifications.arn]
+  lifecycle { ignore_changes = all }
+}
+
+# ============================================================
+# OUTPUTS
+# ============================================================
+
+output "urgent_alerts_topic_arn" {
+  value = aws_sns_topic.urgent_alerts.arn
+}
+
+output "reminder_alerts_topic_arn" {
+  value = aws_sns_topic.reminder_alerts.arn
+}
+
+
+==================== .gitignore ====================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[codz]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+#   For a library or package, you might want to ignore these files since the code is
+#   intended to run in multiple environments; otherwise, check them in:
+# .python-version
+
+# pipenv
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+#   having no cross-platform support, pipenv may install dependencies that don't work, or not
+#   install all needed dependencies.
+#Pipfile.lock
+
+# UV
+#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
+#   This is especially recommended for binary packages to ensure reproducibility, and is more
+#   commonly ignored for libraries.
+#uv.lock
+
+# poetry
+#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
+#   This is especially recommended for binary packages to ensure reproducibility, and is more
+#   commonly ignored for libraries.
+#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
+#poetry.lock
+#poetry.toml
+
+# pdm
+#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
+#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
+#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
+#pdm.lock
+#pdm.toml
+.pdm-python
+.pdm-build/
+
+# pixi
+#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
+#pixi.lock
+#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
+#   in the .venv directory. It is recommended not to include this directory in version control.
+.pixi
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.envrc
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# PyCharm
+#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
+#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
+#  and can be added to the global gitignore or merged into this file.  For a more nuclear
+#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
+#.idea/
+
+# Abstra
+# Abstra is an AI-powered process automation framework.
+# Ignore directories containing user credentials, local state, and settings.
+# Learn more at https://abstra.io/docs
+.abstra/
+
+# Visual Studio Code
+#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
+#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
+#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
+#  you could uncomment the following to ignore the entire vscode folder
+# .vscode/
+
+# Ruff stuff:
+.ruff_cache/
+
+# PyPI configuration file
+.pypirc
+
+# Cursor
+#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
+#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
+#  refer to https://docs.cursor.com/context/ignore-files
+.cursorignore
+.cursorindexingignore
+
+# Marimo
+marimo/_static/
+marimo/_lsp/
+__marimo__/
+
+
+==================== README.md ====================
+
+# BloodOps
+Serverless Blood Bank Management System on AWS
+
+
+==================== LICENSE ====================
+
+MIT License
+
+Copyright (c) 2026 Viswajith S
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
