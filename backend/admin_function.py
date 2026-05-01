@@ -19,7 +19,7 @@ def lambda_handler(event, context):
         donors = donors_table.scan()['Items']
         requests = requests_table.scan()['Items']
         history = history_table.scan()['Items']
-        blood_type_counts = Counter(d['BloodType'] for d in donors)
+        blood_type_counts = Counter(d['BloodType'] for d in donors if d.get('Availability') == 'Available')
         pending_requests = [r for r in requests if r.get('Status') == 'pending']
         matched_requests = [r for r in requests if r.get('Status') == 'matched']
         dashboard = {
